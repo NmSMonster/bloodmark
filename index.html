@@ -1455,20 +1455,20 @@ const ENEMIES={
 
 //================ DANE: SPOTKANIA ================
 const ENC={
-  las:{rate:.065,music:'forest',bg:'forest',
+  las:{rate:.034,music:'forest',bg:'forest',
     day:[['wilk'],['wilk','wilk'],['bandyta'],['bandyta','klusownik'],['dzik'],['wilk','dzik']],
     night:[['upior'],['upior','upior'],['szkielet'],['cien','upior']]},
-  bagna:{rate:.07,music:'swamp',bg:'swamp',
+  bagna:{rate:.035,music:'swamp',bg:'swamp',
     day:[['topielec'],['zmija','zmija'],['kultysta','zmija'],['blotny_ogar'],['topielec','zmija'],['kultysta','kultysta']],
     night:[['upior','topielec'],['cien'],['szkielet','upior']]},
-  przelecz:{rate:.06,music:'world',bg:'pass',
+  przelecz:{rate:.03,music:'world',bg:'pass',
     day:[['dezerter'],['maruder'],['dezerter','dezerter'],['kruki'],['maruder','kruki'],['dezerter','kruki']],
     night:[['upior','upior'],['szkielet','szkielet'],['cien','cien']]},
-  twierdza:{rate:.06,music:'dungeon',bg:'fort',
+  twierdza:{rate:.03,music:'dungeon',bg:'fort',
     day:[['zboj'],['kusznik'],['zboj','kusznik'],['ogar','ogar'],['zbir'],['zbir','kusznik']],night:null},
-  katedra:{rate:.06,music:'dungeon',bg:'cathedral',
+  katedra:{rate:.03,music:'dungeon',bg:'cathedral',
     day:[['fanatyk'],['mnich'],['kusznik_zak','fanatyk'],['inkwizytor'],['mnich','fanatyk'],['inkwizytor','kusznik_zak']],night:null},
-  zamek:{rate:.06,music:'castle',bg:'castle',
+  zamek:{rate:.03,music:'castle',bg:'castle',
     day:[['gwardzista'],['czarny_kusznik'],['gwardzista','czarny_kusznik'],['ogar_hrabiego'],['gwardzista','gwardzista']],night:null},
 };
 
@@ -1720,7 +1720,7 @@ const Field={
       const pool=night?(enc.night||enc.day):enc.day;
       let rate=enc.rate*(night?(1.4+G.dread/45):1);
       if(G.weather==='fog'&&m.outdoor)rate*=1.35; // we mgle łatwiej o zasadzkę
-      if(this.pl.sinceEnc>3&&rnd.chance(rate)){
+      if(this.pl.sinceEnc>6&&rnd.chance(rate)){
         this.pl.sinceEnc=0;
         AudioSys.sfx('encounter');flash('#1a1018',1.2);shake(4);
         let group=rnd.pick(pool);
@@ -2999,7 +2999,7 @@ class BattleScene{
         pose:'idle',offX:0,offTX:0,flash:0,dying:0,phased:false,acts:d.acts,
         x:fx,y:fy,guarding:false};
       // naznaczeni — loteria w każdej walce (✦)
-      if(!d.boss&&!d.elite&&rnd.chance(.08)){
+      if(!d.boss&&!d.elite&&rnd.chance(.05)){
         u.marked=true;
         u.maxHp=u.hp=Math.round(d.hp*1.35);
         if(!spr.markedFrames){
@@ -3786,9 +3786,26 @@ const NPC_DLG={
     return[{say:['ranny','Jeszcze dycham, najemniku. Jak skończysz, co zacząłeś... opowiedz mi. Chcę umrzeć, wiedząc, że któryś z nas wygrał.']}];
   },
   okup:()=>{
+    // najpierw sprawdzian w kręgu — pokonaj ją, potem rozmawiamy o cenie
+    if(!G.flags.mira_beaten)return[
+      {say:['','Bandyta przy namiocie unosi dłoń, zanim zdążysz otworzyć usta.']},
+      {say:['','— Stój. Zasada obozu: towar z zębami najpierw się sprawdza. Ta tam — kiwa głową na namiot — położyła już dwóch kupców. Wejdziesz z nią w krąg. Przeżyjesz i wygrasz — pogadamy o cenie.']},
+      {choice:[
+        {t:'Stań do pojedynku',do:[
+          {say:['','Rozcinają jej rzemienie i wpychają do kręgu z palisady. Mira rozciera nadgarstki, podnosi pożyczony pałasz i mierzy cię wzrokiem bez cienia litości.']},
+          {say:['mira','Nie wiem, kim jesteś, kupcze, ale połamię cię tak samo jak poprzednich. Nikt mnie nie kupi jak skóry na targu.']},
+          {battle:{group:['mira_foe'],bg:'forest',music:'boss',boss:true,canFlee:false}},
+          {flag:'mira_beaten'},
+          {say:['','Mira opada na kolano, opierając się na pałaszu. Patrzy na ciebie długo — i nagle jej oczy rozszerzają się.']},
+          {say:['mira','...ten zamach. Znam ten zamach. Brand?! Ty żyjesz?!']},
+          {say:['','— Wzruszające — ziewa bandyta, wyrywając jej broń. — Sprawdzian zdany. Cena bez zmian: sto pięćdziesiąt. Z góry.']},
+        ]},
+        {t:'Odejdź',do:[{say:['','— Pomyśl szybko — rzuca bandyta. — Krąg czeka, a klientka tanieje wolniej, niż gnije.']}]},
+      ]},
+    ];
     if(G.gold<150)return[
       {say:['','Bandyta przy namiocie mierzy cię wzrokiem i szczerzy zęby.']},
-      {say:['','— Towar w namiocie, cena na bramie: sto pięćdziesiąt srebra. Masz... — zagląda ci teatralnie w sakwę — ...mniej. Wróć z pełną sakwą albo wcale.']},
+      {say:['','— Sprawdzian zdany, ale towar w namiocie ma cenę: sto pięćdziesiąt srebra. Masz... — zagląda ci teatralnie w sakwę — ...mniej. Wróć z pełną sakwą albo wcale.']},
       {say:['brand','(150 srebra. Bandyci na trakcie noszą po kilkanaście sztuk. Skrzynie. Wilcze skóry. Uzbieram.)']},
     ];
     return[
@@ -3797,7 +3814,7 @@ const NPC_DLG={
         {t:'Zapłać 150 srebra',do:[
           {gold:-150},
           {say:['','Bandyta przelicza monety dwa razy, gwiżdże i rozcina rzemienie u wejścia namiotu. — Interes to interes. Zabieraj ją i nie wracaj.']},
-          {say:['mira','...Brand? BRAND. Z całej kompanii myślałam, że tylko ja wygrzebałam się spod tych ciał. A ty... ty mnie właśnie KUPIŁEŚ?']},
+          {say:['mira','Z całej kompanii przeżył akurat ten, który najpierw mnie pobił w kręgu, a potem KUPIŁ. Jak skórę na targu, Brand.']},
           {say:['brand','Odkupiłem. To różnica. Możesz oddać z żołdu, dowódczyni.']},
           {say:['mira','Widziałam dość, by wiedzieć, że to nie ludzie wyrżnęli kompanię. Ale wydali nas ludzie. Ci tutaj dostali list z herbową pieczęcią — widziałam go, zanim mnie związali. Jest w twierdzy.']},
           {join:'mira'},
@@ -3816,11 +3833,34 @@ const NPC_DLG={
       {say:['wit','Hej! Hej, ty! Nie jesteś z nimi — wyciągnij mnie stąd! Klucz ma ich herszt, ten z toporem. Kieł.']},
       {say:['wit','Jestem Wit. Zwiadowca. Śledziłem ludzi hrabiego aż tutaj... długa historia. Wypuść mnie, a opowiem ci całą.']},
     ];
+    if(!G.flags.wit_beaten)return[
+      {say:['wit','No, nareszcie. Wit, zwiadowca, do usług. Śledziłem ludzi hrabiego Vorleca — to oni wozili tu srebro dla bandytów. Mam z nim własny rachunek.']},
+      {say:['wit','Chcecie mnie w drużynie? Zasada zwiadowcy: nie idę pod komendę, której ostrza nie znam. Sparing, tu i teraz. Do pierwszej krwi — moje noże są szybkie, ale tępione... częściowo.']},
+      {choice:[
+        {t:'Stań do sparingu',do:[
+          {say:['','Wit kreśli butem okrąg na posadzce celi i podrzuca nóż w dłoni. Uśmiecha się jak ktoś, kto już to przerabiał.']},
+          {battle:{group:['wit_foe'],bg:'fort',music:'boss',boss:true,canFlee:false}},
+          {flag:'wit_beaten'},
+          {say:['wit','Au. Dobra, dobra — DOŚĆ. Zamach masz paskudny, a osłonę gorszą, ale przeżyję z tobą. To znaczy: przeżyjemy.']},
+          {say:['wit','Została kwestia... hm... zawodowa. Zwiadowca nie pracuje za darmo: dwieście srebra zaliczki. Standardowa stawka kompanii, sam wpisywałeś takie do ksiąg.']},
+        ]},
+        {t:'Później',do:[{say:['wit','Nie ma pośpiechu. Posiedzę, poćwiczę rzuty do kraty. One nie oddają.']}]},
+      ]},
+    ];
+    if(G.gold<200)return[
+      {say:['wit','Dwieście srebra zaliczki, taka stawka. Masz mniej — widzę po sakwie, zwiadowca od tego jest. Wróć, jak uzbierasz.']},
+    ];
     return[
-      {say:['wit','No, nareszcie. Wit, zwiadowca, do usług. Śledziłem ludzi hrabiego Vorleca — to oni woziły tu srebro dla bandytów.']},
-      {say:['wit','Słyszałem przez kraty, czego szukacie. Znam bagna, znam trakty i umiem szyć rany. Bierzcie mnie ze sobą — mam z hrabią własny rachunek. Spalili mi wioskę pod "kwarantannę".']},
-      {join:'wit'},
-      {flag:'wit_joined'},
+      {say:['wit','Dwieście. Liczę przy tobie, bez urazy — zawodowe przyzwyczajenie.']},
+      {choice:[
+        {t:'Zapłać 200 srebra zaliczki',do:[
+          {gold:-200},
+          {say:['wit','Przyjemność robić interesy. Wit, zwiadowca kompanii Kruka — od dziś twojej. Znam bagna, trakty i umiem szyć rany.']},
+          {join:'wit'},
+          {flag:'wit_joined'},
+        ]},
+        {t:'Jeszcze nie teraz',do:[{say:['wit','Oferta nie gnije. Ja, w tej celi, trochę bardziej.']}]},
+      ]},
     ];
   },
   biskup_talk:()=>[{say:['biskup','Klęknij albo wyjdź. Innych dróg w domu popiołu nie ma.']}],
@@ -4227,13 +4267,13 @@ Object.assign(ENEMIES,{
     desc:'Górnicy mówili o "żyle, która oddycha". Potem przestali mówić w ogóle.'},
 });
 Object.assign(ENC,{
-  pobojowisko:{rate:.065,music:'battle',bg:'battlefield',
+  pobojowisko:{rate:.034,music:'battle',bg:'battlefield',
     day:[['grasant'],['grasant','grasant'],['weteran'],['ghul'],['weteran','grasant'],['kruki','ghul']],
     night:[['upior','upior'],['choragzy'],['ghul','upior'],['cien','cien'],['upior','upior','upior']]},
-  wybrzeze:{rate:.065,music:'battle',bg:'coast',
+  wybrzeze:{rate:.034,music:'battle',bg:'coast',
     day:[['przemytnik'],['krab'],['przemytnik','krab'],['morski'],['krab','krab'],['przemytnik','przemytnik']],
     night:[['morski','morski'],['upior','morski'],['cien','morski']]},
-  kopalnie:{rate:.06,music:'battle',bg:'mine',
+  kopalnie:{rate:.03,music:'battle',bg:'mine',
     day:[['slepy_gornik'],['nietoperze'],['gniazdowiec'],['gniazdowiec','nietoperze'],['slepy_gornik','gniazdowiec'],['gniazdowiec','gniazdowiec']],night:null},
 });
 
@@ -4656,6 +4696,18 @@ makeIcons2();
 // strażnik okupu (sprite chodu z wyglądu bandyty)
 IMG.npcs.bandyta_s={walk:walkSheet(FOE_LOOKS.bandyta),portrait:portraitPix(FOE_LOOKS.bandyta).toCanvas()};
 DISPLAY_NAMES.bandyta_s='Bandyta';
+// --- pojedynki rekrutacyjne: pokonaj, zanim kupisz ---
+Object.assign(ENEMIES,{
+  mira_foe:{name:'Mira, dowódczyni',hp:55,atk:10,def:5,dex:8,spd:8,xp:40,gold:0,elite:true,
+    res:{},drops:{},spr:{gen:'human',look:HERO_LOOKS.mira},
+    acts:[{w:3,kind:'attack',pow:1,type:'slash'},{w:1,kind:'attack',pow:1.3,type:'pierce',name:'Pchnięcie',pierceDef:.3}],
+    desc:'Walczyła w kręgu obozu o własną cenę. Dwa dni rzemieni nie stępiły jej ostrza.'},
+  wit_foe:{name:'Wit, zwiadowca',hp:50,atk:10,def:4,dex:10,spd:11,xp:40,gold:0,elite:true,
+    res:{},drops:{},spr:{gen:'human',look:HERO_LOOKS.wit},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce'},{w:1,kind:'attack',pow:.9,type:'pierce',name:'Draśnięcie',status:'poison',ch:.3}],
+    desc:'Sparing z nożownikiem uczy pokory. Najczęściej w okolicach żeber.'},
+});
+for(const id of['mira_foe','wit_foe'])IMG.enemies[id]=enemySprite(ENEMIES[id].spr);
 // --- tabliczki z czerwoną czaszką przed legowiskami ---
 MAPS.las.objects.push({type:'sign',skull:true,x:32,y:2,text:'Twierdza bandytów. Wstęp: życie. Wyjścia nie gwarantujemy.'});
 MAPS.bagna.objects.push({type:'sign',skull:true,x:17,y:19,text:'Dom popiołu. Klęknij albo zawróć.'});
@@ -4783,7 +4835,10 @@ class ForgeScene{
 //================ HUD CELU (dyskretny) ================
 function hudGoal(){
   if(G.flags.freeplay)return null;
-  if(!G.flags.mira_joined&&G.quests.glowny===0)return 'Okup za pojmaną: '+Math.min(G.gold,150)+'/150 srebra (obóz w lesie)';
+  if(!G.flags.mira_joined&&G.quests.glowny===0){
+    if(!G.flags.mira_beaten)return 'Pokonaj pojmaną w kręgu obozu bandytów (las)';
+    return 'Okup za Mirę: '+Math.min(G.gold,150)+'/150 srebra (obóz w lesie)';
+  }
   if(G.quests.choragiew!==undefined&&G.quests.choragiew<3)
     return['Znajdź ślad chorągwi na pobojowisku','Zejdź do Starych Kopalń','Wróć do Hoddera w Przystani'][G.quests.choragiew];
   if(G.quests.relikwia===0)return'Odzyskaj relikwiarz z wraku na zatoce';
@@ -4795,7 +4850,7 @@ function hudGoal(){
 //================ KRONIKA AKTUALIZACJI ================
 const GAME_VER='Pieśń III';
 const CHANGELOG=[
-  {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami. Minimapa staje się przejrzysta, gdy postać wchodzi pod nią.'},
+  {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami. Minimapa staje się przejrzysta, gdy postać wchodzi pod nią. Rekrutacja przez pojedynek: Mirę trzeba pokonać w kręgu (potem okup 150), Wita w sparingu (zaliczka 200). Potyczki znacznie rzadsze, naznaczeni ostrożniej.'},
   {v:'Pieśń II',t:'Świat rośnie',d:'Cztery nowe krainy: Pobojowisko Stu Chorągwi, Przystań Maruderów z gotyckim kościołem i domami z muru pruskiego, Wybrzeże Wraków i Stare Kopalnie z Matką Gniazda. Pogoda (deszcz, mgła), kroniki łowów w bestiariuszu, zadania „Zaginiona chorągiew" i „Relikwia z głębin", dwunastu nowych wrogów.'},
   {v:'Szlif',t:'Ostrzenie klingi',d:'Klatki ataku wrogów, ikona obrony, oddech przed Apostołem, kadr kinowy, rzadsze potyczki w lochach, poprawki błędów.'},
   {v:'Pieśń I',t:'Narodziny pieśni',d:'Opowieść zemsty naznaczonego najemnika: siedem krain, pięciu bossów, trzech bohaterów, techniki za wigor, SZAŁ berserka, Uwaga Zasłony nocą, pieśni o czynach, minimapa.'},
