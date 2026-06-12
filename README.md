@@ -1,4 +1,4 @@
-# BLOODMARK — Pieśń Czarnego Najemnika
+# BLOODMARK 
 
 Turowy RPG w klimacie mrocznego średniowiecza (inspiracja: Berserk).
 Cała grafika pixel art i muzyka generowane proceduralnie w kodzie — jeden plik HTML, zero zależności.
