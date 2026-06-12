@@ -1189,7 +1189,7 @@ const HEROES={
 };
 const xpNext=lv=>Math.floor(24*Math.pow(lv,1.75));
 function mkHero(id,level=1){
-  const h={id,level,xp:0,equip:{weapon:null,armor:null,acc:null},status:{},buffs:{}};
+  const h={id,level,xp:0,equip:{weapon:null,armor:null,acc:null},upg:{weapon:0,armor:0},status:{},buffs:{}};
   h.hp=hstat(h,'hp');h.sp=hstat(h,'sp');
   return h;
 }
@@ -1200,7 +1200,17 @@ function hstat(h,k){
     const it=h.equip[slot]&&ITEMS[h.equip[slot]];
     if(it&&it.stats&&it.stats[k])v+=it.stats[k];
   }
+  // hartowanie w kuźni: +n ATK za broń, +n OBR za pancerz
+  if(h.upg){
+    if(k==='atk'&&h.equip.weapon)v+=h.upg.weapon||0;
+    if(k==='def'&&h.equip.armor)v+=h.upg.armor||0;
+  }
   return Math.max(1,Math.round(v));
+}
+function eqName(h,slot){
+  const id=h.equip[slot];if(!id)return '—';
+  const n=h.upg&&h.upg[slot]?' +'+h.upg[slot]:'';
+  return ITEMS[id].name+n;
 }
 const heroAlive=h=>h.hp>0;
 const partyAlive=()=>G.party.filter(heroAlive);
@@ -1445,20 +1455,20 @@ const ENEMIES={
 
 //================ DANE: SPOTKANIA ================
 const ENC={
-  las:{rate:.13,music:'forest',bg:'forest',
+  las:{rate:.065,music:'forest',bg:'forest',
     day:[['wilk'],['wilk','wilk'],['bandyta'],['bandyta','klusownik'],['dzik'],['wilk','dzik']],
     night:[['upior'],['upior','upior'],['szkielet'],['cien','upior']]},
-  bagna:{rate:.14,music:'swamp',bg:'swamp',
+  bagna:{rate:.07,music:'swamp',bg:'swamp',
     day:[['topielec'],['zmija','zmija'],['kultysta','zmija'],['blotny_ogar'],['topielec','zmija'],['kultysta','kultysta']],
     night:[['upior','topielec'],['cien'],['szkielet','upior']]},
-  przelecz:{rate:.12,music:'world',bg:'pass',
+  przelecz:{rate:.06,music:'world',bg:'pass',
     day:[['dezerter'],['maruder'],['dezerter','dezerter'],['kruki'],['maruder','kruki'],['dezerter','kruki']],
     night:[['upior','upior'],['szkielet','szkielet'],['cien','cien']]},
-  twierdza:{rate:.12,music:'dungeon',bg:'fort',
+  twierdza:{rate:.06,music:'dungeon',bg:'fort',
     day:[['zboj'],['kusznik'],['zboj','kusznik'],['ogar','ogar'],['zbir'],['zbir','kusznik']],night:null},
-  katedra:{rate:.12,music:'dungeon',bg:'cathedral',
+  katedra:{rate:.06,music:'dungeon',bg:'cathedral',
     day:[['fanatyk'],['mnich'],['kusznik_zak','fanatyk'],['inkwizytor'],['mnich','fanatyk'],['inkwizytor','kusznik_zak']],night:null},
-  zamek:{rate:.12,music:'castle',bg:'castle',
+  zamek:{rate:.06,music:'castle',bg:'castle',
     day:[['gwardzista'],['czarny_kusznik'],['gwardzista','czarny_kusznik'],['ogar_hrabiego'],['gwardzista','gwardzista']],night:null},
 };
 
@@ -1602,6 +1612,7 @@ function loadMap(id,tx,ty,dir){
   Field.ash=[];Field.rain=[];
   rollWeather();
   AudioSys.music(m.music||'world');
+  if(G.party.length)saveGame(0); // autozapis przy zmianie mapy
 }
 
 //================ ŚWIAT: SCENA ================
@@ -1620,7 +1631,7 @@ const Field={
   update(dt){
     const m=MC.m,p=this.pl;
     G.playtime+=dt;
-    if(m.outdoor){const prev=G.dayT;G.dayT=(G.dayT+dt/300)%1;if(G.dayT<prev)rollWeather();} // świt = nowa pogoda
+    if(m.outdoor){const prev=G.dayT;G.dayT=(G.dayT+dt/300)%1;if(G.dayT<prev){rollWeather();bumpCounter('days');}} // świt = nowa pogoda
     // ruch gracza
     if(p.moving){
       p.mt+=dt*6.5;
@@ -1674,6 +1685,7 @@ const Field={
   },
   afterStep(){
     const m=MC.m;
+    bumpCounter('steps');
     // Uwaga Zasłony — nocą w polu piętno przyciąga upiory; ogień je odgania
     if(m.outdoor&&isNight()){
       let nearFire=false;
@@ -1787,6 +1799,9 @@ const Field={
         if(G.flags['pick_'+o.id])continue;
         const pr=IMG.props[o.p||'flower'];
         ents.push({y:(o.y+1)*16,draw:()=>ctx.drawImage(pr.cv,o.x*16+8-(pr.w>>1)-cx,(o.y+1)*16-pr.h-1-cy)});
+      } else if(o.type==='sign'){
+        const pr=IMG.props[o.skull?'skullsign':'sign'];
+        ents.push({y:(o.y+1)*16,draw:()=>ctx.drawImage(pr.cv,o.x*16+8-(pr.w>>1)-cx,(o.y+1)*16-pr.h-cy)});
       } else if(o.type==='npc'){
         const sheet=IMG.npcs[o.npc]||IMG.heroes[o.npc];
         const fr=o.moving?[0,1,0,2][Math.floor(o.mt*4)%4]:0;
@@ -1908,6 +1923,20 @@ const Field={
         txt('Zasłona patrzy',W-84,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
       }
     }
+    // dyskretny cel wyprawy + postęp poziomu (lewy dolny róg)
+    {
+      const goal=hudGoal();
+      if(goal){
+        ctx.globalAlpha=.72;octx.globalAlpha=.72;
+        const lead=G.party[0];
+        if(lead){
+          txt('poz.'+lead.level,12,H-32,'#8d8270',6);
+          bar(40,H-31,44,3,clamp(lead.xp/xpNext(lead.level),0,1),'#8a7142','#5a4a2c');
+        }
+        txt('▸ '+goal,12,H-22,'#b8ad98',7,'left',true,'#0a0705');
+        ctx.globalAlpha=1;octx.globalAlpha=1;
+      }
+    }
     drawToasts();
   },
 };
@@ -1944,11 +1973,20 @@ class DialogScene{
         if(st.join==='mira'){h.equip.weapon='palasz_stary';h.equip.armor='przeszywanica';}
         if(st.join==='wit'){h.equip.weapon='noze_mysl';h.equip.armor='przeszywanica';}
         G.party.push(h);AudioSys.sfx('levelup');pushToast(HEROES[st.join].name+' dołącza do drużyny!','heart');}
-      if(st.heal){for(const h of G.party){h.hp=hstat(h,'hp');h.sp=hstat(h,'sp');h.status={};}G.dread=0;}
+      if(st.heal){
+        // sen leczy tylko żywych — powaleni wymagają soli trzeźwiących
+        for(const h of G.party){if(h.hp>0){h.hp=hstat(h,'hp');h.sp=hstat(h,'sp');h.status={};}}
+        G.dread=0;G.dayT=0.05;G.counters.days=(G.counters.days||0)+1;
+        if(MAPS[G.mapId]&&MAPS[G.mapId].outdoor)rollWeather();
+        const self=this;
+        pushScene(new DawnScene(()=>self.advance()));
+        return;
+      }
       if(st.sfx)AudioSys.sfx(st.sfx);
       if(st.music)AudioSys.music(st.music);
       if(st.quest){G.quests[st.quest]=st.stage;pushToast('Dziennik: '+QUESTS[st.quest].name,'scroll');AudioSys.sfx('confirm');}
       if(st.shop){pushScene(new ShopScene(st.shop));return;}
+      if(st.forge){pushScene(new ForgeScene());return;}
       if(st.battle){
         const b=st.battle,self=this;
         startBattle(b.group,{bg:b.bg,music:b.music||'battle',boss:b.boss,canFlee:b.canFlee!==false,
@@ -2195,7 +2233,6 @@ const MAPS={
     {type:'npc',npc:'dziecko',x:13,y:15,dlg:'dziecko'},
     {type:'npc',npc:'kaplan',x:8,y:16,dlg:'kaplan'},
     {type:'npc',npc:'ranny',x:9,y:8,dlg:'ranny',static:true},
-    {type:'npc',npc:'mira',x:13,y:9,dlg:'mira_join',notFlag:'mira_joined'},
     {type:'chest',id:'w1',x:2,y:17,item:'bandaz',n:2},
     {type:'chest',id:'w2',x:28,y:2,gold:30},
     {type:'exit',x:29,y:10,to:'las',tx:1,ty:11,dir:'right'},
@@ -2208,6 +2245,8 @@ const MAPS={
         [26,7,'.'],[27,7,'.'],[28,7,'.'],[26,8,'.'],[27,8,'F'],[28,8,'.'],[26,9,'.'],[27,9,'.'],[28,9,'.'],[31,17,'.'],[30,17,'.']]}),
     objects:[
       {type:'prop',p:'bones',x:25,y:9,nosolid:true},
+      {type:'prop',p:'tent',x:26,y:7},
+      {type:'npc',npc:'bandyta_s',x:26,y:8,dlg:'okup',static:true,notFlag:'mira_joined'},
       {type:'sign',x:2,y:10,text:'Na wschód: trakt na przełęcz. Na północ: stara twierdza. NIE CHODŹCIE TAM.'},
       {type:'trig',x:27,y:9,id:'oboz',script:'t_oboz',once:true},
       {type:'trig',x:40,y:11,script:'t_gate',bounce:true,unless:'katedra_done'},
@@ -2344,7 +2383,7 @@ const QUESTS={
 
 //================ ZAPIS / ODCZYT ================
 function saveGame(slot){
-  const d={v:1,party:G.party.map(h=>({id:h.id,level:h.level,xp:h.xp,hp:h.hp,sp:h.sp,equip:h.equip})),
+  const d={v:1,party:G.party.map(h=>({id:h.id,level:h.level,xp:h.xp,hp:h.hp,sp:h.sp,equip:h.equip,upg:h.upg})),
     inv:G.inv,gold:G.gold,flags:G.flags,bestiary:G.bestiary,quests:G.quests,counters:G.counters,dread:G.dread,weather:G.weather,
     mapId:G.mapId,px:G.px,py:G.py,dir:G.dir,dayT:G.dayT,playtime:G.playtime,chapter:G.chapter,
     stamp:new Date().toLocaleString('pl-PL')};
@@ -2355,7 +2394,7 @@ function saveInfo(slot){
 }
 function loadGame(slot){
   const d=saveInfo(slot);if(!d)return false;
-  G.party=d.party.map(p=>{const h=mkHero(p.id,p.level);h.xp=p.xp;h.equip=p.equip;h.hp=p.hp;h.sp=p.sp;return h;});
+  G.party=d.party.map(p=>{const h=mkHero(p.id,p.level);h.xp=p.xp;h.equip=p.equip;if(p.upg)h.upg=p.upg;h.hp=p.hp;h.sp=p.sp;return h;});
   G.inv=d.inv;G.gold=d.gold;G.flags=d.flags;G.bestiary=d.bestiary;G.quests=d.quests;
   G.counters=d.counters||{};G.dread=d.dread||0;
   G.dayT=d.dayT;G.playtime=d.playtime;G.chapter=d.chapter||'';
@@ -2370,7 +2409,7 @@ const STAT_LBL={hp:'ŻYW',sp:'WGR',atk:'ATK',def:'OBR',dex:'ZRC',spd:'SZB'};
 const STATUS_LBL={poison:'Trucizna',bleed:'Krwawienie',burn:'Podpalenie',stun:'Ogłuszenie',fear:'Strach',regen:'Opatrzony'};
 const STATUS_ICO={poison:'st_poison',bleed:'st_curse',burn:'st_burn',stun:'st_stun',fear:'st_curse',regen:'st_regen'};
 class MenuScene{
-  constructor(){this.overlay=true;this.tabs=['Drużyna','Przedmioty','Techniki','Ekwipunek','Bestiariusz','Dziennik','Czyny','Zapis','Opcje'];
+  constructor(){this.overlay=true;this.tabs=['Drużyna','Przedmioty','Techniki','Ekwipunek','Bestiariusz','Dziennik','Czyny','Aktualizacje','Zapis','Opcje'];
     this.tab=0;this.focus='tabs';this.ci=0;this.sub=0;this.mode=null;this.scroll=0;this.msg=null;}
   itemList(){return Object.keys(G.inv).filter(k=>['use'].includes(ITEMS[k].type));}
   equipList(slot,hero){return Object.keys(G.inv).filter(k=>ITEMS[k].type===slot&&(!ITEMS[k].who||ITEMS[k].who===hero.id));}
@@ -2468,6 +2507,10 @@ class MenuScene{
       if(a==='up')this.ci=Math.max(0,this.ci-1);
       if(a==='down')this.ci=Math.min(n-1,this.ci+1);
     }
+    else if(t==='Aktualizacje'){
+      if(a==='up')this.ci=Math.max(0,this.ci-1);
+      if(a==='down')this.ci=Math.min(CHANGELOG.length-1,this.ci+1);
+    }
     else if(t==='Zapis'){
       if(a==='up')this.ci=Math.max(0,this.ci-1);
       if(a==='down')this.ci=Math.min(2,this.ci+1);
@@ -2496,6 +2539,8 @@ class MenuScene{
       h.hp=Math.max(1,Math.round(hstat(h,'hp')*it.revive));}
     else{
       if(h.hp<=0){this.msg=HEROES[h.id].name+' potrzebuje czegoś mocniejszego.';return;}
+      const hasStatus=Object.keys(h.status).length>0;
+      if(it.heal&&h.hp>=hstat(h,'hp')&&!(it.cure&&hasStatus)&&!(it.spRest&&h.sp<hstat(h,'sp'))){this.msg='Pełnia sił — nie marnuj zapasów.';return;}
       if(it.heal)h.hp=Math.min(hstat(h,'hp'),h.hp+it.heal);
       if(it.spRest)h.sp=Math.min(hstat(h,'sp'),h.sp+it.spRest);
       if(it.cure)for(const c of it.cure)delete h.status[c];
@@ -2508,6 +2553,7 @@ class MenuScene{
     if(s.revive){if(tgt.hp>0){this.msg='Nie trzeba.';return;}tgt.hp=Math.max(1,Math.round(hstat(tgt,'hp')*s.revive));}
     else{
       if(tgt.hp<=0){this.msg='Za późno na bandaże.';return;}
+      if(s.heal&&tgt.hp>=hstat(tgt,'hp')&&!(s.cure&&Object.keys(tgt.status).length)){this.msg='Pełnia sił.';return;}
       if(s.heal)tgt.hp=Math.min(hstat(tgt,'hp'),tgt.hp+Math.round(hstat(tgt,'hp')*s.heal));
       if(s.cure)for(const c of s.cure)delete tgt.status[c];
     }
@@ -2555,12 +2601,9 @@ class MenuScene{
         txt('Doświadczenie:',dx,cy+74,'#8d8270',8);
         txt(h.xp+' / '+xpNext(h.level),dx,cy+86,'#b8ad98',8);
         bar(dx,cy+98,120,4,h.xp/xpNext(h.level),'#8a7142','#5a4a2c');
-        const w_=h.equip.weapon?ITEMS[h.equip.weapon].name:'—';
-        const a_=h.equip.armor?ITEMS[h.equip.armor].name:'—';
-        const c_=h.equip.acc?ITEMS[h.equip.acc].name:'—';
-        txt('Broń: '+w_,dx,cy+112,'#b8ad98',7);
-        txt('Pancerz: '+a_,dx,cy+124,'#b8ad98',7);
-        txt('Dodatek: '+c_,dx,cy+136,'#b8ad98',7);
+        txt('Broń: '+eqName(h,'weapon'),dx,cy+112,'#b8ad98',7);
+        txt('Pancerz: '+eqName(h,'armor'),dx,cy+124,'#b8ad98',7);
+        txt('Dodatek: '+eqName(h,'acc'),dx,cy+136,'#b8ad98',7);
       }
     }
     else if(t==='Przedmioty'){
@@ -2618,7 +2661,7 @@ class MenuScene{
           const y=cy+16+i*16;
           if(i===this.sub&&this.mode==='slots'){ctx.fillStyle='rgba(201,163,90,.12)';ctx.fillRect(x0-4,y-2,180,15);}
           txt(names[i]+':',x0,y,'#8d8270',8);
-          txt(h.equip[sl]?ITEMS[h.equip[sl]].name:'—',x0+58,y,'#d8cdb8',8);
+          txt(eqName(h,sl),x0+58,y,'#d8cdb8',8);
         });
         const ks=['atk','def','dex','spd'];
         ks.forEach((k,i)=>{txt(STAT_LBL[k]+' '+hstat(h,k),x0+(i%2)*60,cy+74+Math.floor(i/2)*13,'#b8ad98',8);});
@@ -2682,9 +2725,19 @@ class MenuScene{
       if(!qs.length)txt('Dziennik pusty.',x0,cy,'#8d8270',8);
       for(const q of qs){
         const Q=QUESTS[q],st=G.quests[q],done=st>=Q.done;
+        let stxt=Q.stages[Math.min(st,Q.stages.length-1)];
+        if(q==='kwiaty'&&st===0)stxt+=' [Masz: '+(G.inv.kwiat||0)+'/3]';
         txt((done?'✓ ':'• ')+Q.name,x0,y,done?'#6e8a62':(Q.main?'#c9a35a':'#e8dcc0'),8);
-        y=wrapTxt(Q.stages[Math.min(st,Q.stages.length-1)],x0+10,y+13,W-150,'#9a8f7c',7,10)+16;
+        y=wrapTxt(stxt,x0+10,y+13,W-150,'#9a8f7c',7,10)+16;
       }
+      // statystyki pieśni
+      const C=G.counters||{};
+      const tot=Object.values(C.kills||{}).reduce((a,b)=>a+b,0);
+      let sy=Math.max(y+4,cy+128);
+      txt('— Statystyki pieśni —',x0,sy,'#8a7142',8);sy+=13;
+      txt('Ubici wrogowie: '+tot+'    Powalenia: '+(C.deaths||0),x0,sy,'#b8ad98',7);sy+=11;
+      txt('Kroki: '+(C.steps||0)+'    Dni wędrówki: '+(C.days||0),x0,sy,'#b8ad98',7);sy+=11;
+      txt('Czas pieśni: '+fmtTime(G.playtime),x0,sy,'#b8ad98',7);
     }
     else if(t==='Czyny'){
       const ids=Object.keys(ACHV),got=ids.filter(i=>G.achv[i]).length;
@@ -2700,9 +2753,28 @@ class MenuScene{
       if(sel){
         const un=G.achv[sel];
         txt(ACHV[sel].name,x0+180,cy,un?'#f0d9a3':'#8d8270',9);
-        wrapTxt(un?ACHV[sel].desc:'Ta zwrotka jeszcze nie została wyśpiewana.',x0+180,cy+16,W-x0-200,'#9a8f7c',8,11);
+        wrapTxt(un?ACHV[sel].desc:ACHV[sel].desc,x0+180,cy+16,W-x0-200,'#9a8f7c',8,11);
         if(un)txt('♪ wyśpiewana',x0+180,cy+44,'#6e8a62',7);
+        else{
+          // postęp ku czynowi (goal gradient)
+          const PROG={postrach_wilkow:()=>[(G.counters.wilki||0),10],nocny_marek:()=>[(G.counters.nocne||0),5],
+            kronikarz:()=>[Object.keys(G.bestiary).length,15],sakiewka:()=>[Math.min(G.gold,1000),1000]};
+          if(PROG[sel]){const[a,b]=PROG[sel]();
+            txt('Postęp: '+a+' / '+b,x0+180,cy+44,'#c9a35a',7);
+            bar(x0+180,cy+55,100,4,a/b,'#8a7142','#5a4a2c');}
+          else txt('— jeszcze nie wyśpiewana —',x0+180,cy+44,'#5e5648',7);
+        }
       }
+    }
+    else if(t==='Aktualizacje'){
+      let y=cy;
+      CHANGELOG.forEach((e,i)=>{
+        if(i<this.ci)return;
+        if(y>H-60)return;
+        txt('♪ '+e.v+' — '+e.t,x0,y,i===this.ci&&this.focus==='content'?'#f0d9a3':'#c9a35a',9);
+        y=wrapTxt(e.d,x0+8,y+14,W-150,'#9a8f7c',7,10)+18;
+      });
+      txt('▲▼ przewijanie',x0+220,y0-4,'#5e5648',7);
     }
     else if(t==='Zapis'){
       for(let i=0;i<3;i++){
@@ -2740,8 +2812,8 @@ const TitleScene={
     if(this.mode==='load'){
       if(a==='cancel'){this.mode='main';AudioSys.sfx('cancel');return;}
       if(a==='up'){this.si=Math.max(0,this.si-1);AudioSys.sfx('cursor');}
-      if(a==='down'){this.si=Math.min(2,this.si+1);AudioSys.sfx('cursor');}
-      if(a==='ok'){if(saveInfo(this.si+1)){AudioSys.sfx('confirm');fadeTo(()=>loadGame(this.si+1));}else AudioSys.sfx('cancel');}
+      if(a==='down'){this.si=Math.min(3,this.si+1);AudioSys.sfx('cursor');}
+      if(a==='ok'){if(saveInfo(this.si)){AudioSys.sfx('confirm');fadeTo(()=>loadGame(this.si));}else AudioSys.sfx('cancel');}
       return;
     }
     const n=3;
@@ -2785,15 +2857,17 @@ const TitleScene={
         txt(s,W/2,y,i===this.i?'#f0d9a3':'#9a8f7c',9,'center');
       });
     } else {
-      panel(W/2-110,150,220,86);
-      txt('Wczytaj kronikę:',W/2,158,'#c9a35a',8,'center');
-      for(let i=0;i<3;i++){
-        const inf=saveInfo(i+1),y=172+i*18;
+      panel(W/2-110,146,220,102);
+      txt('Wczytaj kronikę:',W/2,154,'#c9a35a',8,'center');
+      for(let i=0;i<4;i++){
+        const inf=saveInfo(i),y=168+i*18;
         if(i===this.si){ctx.fillStyle='rgba(201,163,90,.12)';ctx.fillRect(W/2-100,y-2,200,16);}
-        txt('Slot '+(i+1)+':  '+(inf?(inf.chapter+', poz.'+inf.party[0].level+', '+fmtTime(inf.playtime)):'— pusty —'),W/2,y,inf?'#d8cdb8':'#6e6456',8,'center');
+        const lbl=i===0?'Auto':'Slot '+i;
+        txt(lbl+':  '+(inf?(inf.chapter+', poz.'+inf.party[0].level+', '+fmtTime(inf.playtime)):'— pusty —'),W/2,y,inf?'#d8cdb8':'#6e6456',8,'center');
       }
     }
     txt('strzałki — ruch   Z/Enter — wybór   X/Esc — wstecz',W/2,H-16,'#5e5648',7,'center');
+    txt(GAME_VER,W-64,H-28,'#5e5648',7,'right');
   },
 };
 class MenuScene2Opts extends MenuScene{
@@ -2846,12 +2920,26 @@ function startEnding(kind){
   setScene(EndingScene);
 }
 const EndingScene={
-  enter(){FX.fadeDir=-1;},
+  fi:0,
+  enter(){FX.fadeDir=-1;this.fi=0;},
   key(a){
-    if(a==='ok'){
-      AudioSys.sfx('cursor');endingIdx++;
-      if(endingIdx>=endingPages.length)fadeTo(()=>setScene(TitleScene));
+    const last=endingIdx>=endingPages.length-1;
+    if(last){
+      if(a==='up'||a==='down'){this.fi=1-this.fi;AudioSys.sfx('cursor');return;}
+      if(a==='ok'){
+        AudioSys.sfx('confirm');
+        if(this.fi===0){ // tryb swobodny — pieśń trwa
+          fadeTo(()=>{
+            for(const h of G.party){h.hp=hstat(h,'hp');h.sp=hstat(h,'sp');h.status={};}
+            G.flags.freeplay=true;
+            setScene(Field);loadMap('przystan',16,11,'down');
+            pushToast('Pieśń trwa — czekaj na kolejne zwrotki (aktualizacje)','heart');
+          });
+        } else fadeTo(()=>setScene(TitleScene));
+      }
+      return;
     }
+    if(a==='ok'){AudioSys.sfx('cursor');endingIdx++;}
   },
   update(){},
   draw(){
@@ -2859,13 +2947,17 @@ const EndingScene={
     if(endingIdx>=endingPages.length)return;
     const last=endingIdx===endingPages.length-1;
     if(last){
-      txt(endingPages[endingIdx],W/2,H/2-10,'#c9a35a',14,'center');
-      txt('Dziękujemy za grę.',W/2,H/2+18,'#6e6456',8,'center');
+      txt(endingPages[endingIdx],W/2,H/2-34,'#c9a35a',14,'center');
+      txt('Dziękujemy za grę.',W/2,H/2-8,'#6e6456',8,'center');
+      ['Wędruj dalej (tryb swobodny)','Powrót do tytułu'].forEach((s,i)=>{
+        const y=H/2+22+i*16;
+        if(i===this.fi)txt('▸',W/2-92,y,'#c9a35a',9);
+        txt(s,W/2,y,i===this.fi?'#f0d9a3':'#9a8f7c',9,'center');
+      });
     } else {
-      ctx.font="9px Georgia,serif";
       wrapTxt(endingPages[endingIdx],90,H/2-16,W-180,'#b8ad98',9,14);
+      txt('Z — dalej',W/2,H-22,'#5e5648',7,'center');
     }
-    txt('Z — dalej',W/2,H-22,'#5e5648',7,'center');
   },
 };
 
@@ -2873,6 +2965,12 @@ const EndingScene={
 function startBattle(group,opts={}){pushScene(new BattleScene(group,opts));}
 const _flashCache=new Map();
 function flashOf(img){let m=_flashCache.get(img);if(!m){m=whiteMask(img);_flashCache.set(img,m);}return m;}
+function markTint(cnv){
+  const c=document.createElement('canvas');c.width=cnv.width;c.height=cnv.height;
+  const g=c.getContext('2d');g.drawImage(cnv,0,0);
+  g.globalCompositeOperation='source-atop';g.fillStyle='rgba(190,32,46,.42)';g.fillRect(0,0,c.width,c.height);
+  return c;
+}
 const TYPE_LBL={slash:'cięte',pierce:'kłute',blunt:'obuchowe',fire:'ogień',dark:'mrok'};
 
 class BattleScene{
@@ -2885,10 +2983,21 @@ class BattleScene{
       const spr=IMG.enemies[id];
       const n=group.length;
       const fx=n===1?96:54+(i%2)*48+i*4,fy=n===1?104:74+i*(56/Math.max(1,n-1));
-      return{kind:'foe',id,d,hp:d.hp,maxHp:d.hp,buffs:{},status:{},spr,scale:d.spr.scale||2,
+      const u={kind:'foe',id,d,hp:d.hp,maxHp:d.hp,buffs:{},status:{},spr,scale:d.spr.scale||2,
         pose:'idle',offX:0,offTX:0,flash:0,dying:0,phased:false,acts:d.acts,
         x:fx,y:fy,guarding:false};
+      // naznaczeni — loteria w każdej walce (✦)
+      if(!d.boss&&!d.elite&&rnd.chance(.08)){
+        u.marked=true;
+        u.maxHp=u.hp=Math.round(d.hp*1.35);
+        if(!spr.markedFrames){
+          spr.markedFrames=spr.frames.map(markTint);
+          if(spr.attack)spr.markedAttack=spr.attack.map(markTint);
+        }
+      }
+      return u;
     });
+    this.freeze=0;
     for(const hu of this.heroes){hu.h.buffs={};} // świeże mnożniki na start walki
     this.queue=[];this.cur=null;this.cmd=0;this.ti=0;this.subMenu=null;this.si=0;
     this.co=null;this.wait=0;
@@ -2897,6 +3006,7 @@ class BattleScene{
   // ---- statystyki z mnożnikami ----
   uStat(u,k){
     let v=u.kind==='hero'?hstat(u.h,k):u.d[k];
+    if(u.marked&&(k==='atk'))v*=1.35;
     const b=(u.kind==='hero'?u.h.buffs:u.buffs)[k];
     if(b)v*=b.mul;
     if(k==='atk'&&this.uStatus(u).fear)v*=.75;
@@ -2968,6 +3078,7 @@ class BattleScene{
     const r=this.dmgRoll(att,tgt,pow,type,o);
     this.setHp(tgt,this.uHp(tgt)-r.dmg);
     this.hitFX(tgt,type,r.crit);
+    if(r.crit)this.freeze=Math.max(this.freeze,.08); // hit-stop
     const px=tgt.x+(tgt.kind==='foe'?tgt.spr.w*tgt.scale/2:30);
     this.addFloat(px,tgt.y+4,r.dmg+(r.crit?'!':''),r.crit?'#f0d050':(r.mult>1?'#8ad07a':(r.mult<1?'#8d8270':'#e8dcc0')));
     if(o.status&&rnd.chance(o.ch||o.statusCh||0)){
@@ -2976,11 +3087,19 @@ class BattleScene{
       this.addFloat(px,tgt.y-6,STATUS_LBL[o.status]+'!','#c08ad8');
     }
     if(this.uHp(tgt)<=0)this.kill(tgt);
+    else if(tgt.kind==='hero'&&this.uHp(tgt)<=this.uMaxHp(tgt)*.06){
+      this.addFloat(tgt.x+30,tgt.y-14,'O WŁOS!','#e85a4a');AudioSys.sfx('crit');shake(4); // near-miss
+    }
     return r;
   }
   kill(u){
-    if(u.kind==='foe'){u.dying=1;AudioSys.sfx('death');}
-    else{u.pose='ko';this.say(HEROES[u.id].name+' pada!');AudioSys.sfx('death');}
+    if(u.kind==='foe'){
+      this.freeze=Math.max(this.freeze,.1);
+      if(u.d.boss||u.d.elite){u.slowDie=0;} // osuwa się i krwawi
+      else u.dying=1;
+      AudioSys.sfx('death');
+    }
+    else{u.pose='ko';this.say(HEROES[u.id].name+' pada!');AudioSys.sfx('death');bumpCounter('deaths');}
   }
   // ---- AI wroga ----
   *foeAct(u){
@@ -3118,10 +3237,28 @@ class BattleScene{
   }
   *winSeq(){
     yield .5;
-    let xp=0,gold=0;const drops=[];
+    while(this.foes.some(f=>f.slowDie!==undefined&&f.slowDie<3.5))yield .2; // boss dokonuje żywota
+    let xp=0,gold=0;const drops=[],specials=[];
+    const MATGEN={beast:['kiel_b','skora'],spider:['kiel_b','skora'],snake:['skora'],crab:['kiel_b'],
+      human:['ruda'],skeleton:['ruda'],possessed:['ruda'],drowned:['skora']};
     for(const f of this.foes){
-      xp+=f.d.xp;gold+=f.d.gold;
-      for(const it in(f.d.drops||{}))if(rnd.chance(f.d.drops[it]))drops.push(it);
+      const mul=f.marked?2:1;
+      xp+=f.d.xp*mul;gold+=f.d.gold*mul;
+      for(const it in(f.d.drops||{}))if(rnd.chance(Math.min(1,f.d.drops[it]*mul)))drops.push(it);
+      const pool=MATGEN[f.d.spr.gen]||[];
+      if(pool.length&&rnd.chance(f.marked?.7:.35))drops.push(rnd.pick(pool));
+      if(f.marked){drops.push('esencja');specials.push({c:'#e85a4a',t:'✦ Naznaczony pokonany — krwawa esencja!'});}
+    }
+    // loteria łupów (zmienny rozkład wzmocnień)
+    if(rnd.chance(.05)){
+      if(rnd.chance(.5)){const m=rnd.pick(['kiel_b','skora','ruda']);addItem(m,3);specials.push({c:'#f0d050',t:'✦ ZŁOTY ŁUP: '+ITEMS[m].name+' ×3'});}
+      else{const g2=rnd.i(60,120);giveGold(g2);specials.push({c:'#f0d050',t:'✦ ZŁOTY ŁUP: '+g2+' srebra'});}
+      AudioSys.sfx('coin');
+    }
+    if(rnd.chance(.015)){
+      const rare=rnd.pick(['sole','okowita_s','opatrunek_p','amulet_kruka','rzemien']);
+      addItem(rare);specials.push({c:'#e85a4a',t:'❖ KRWAWY ŁUP: '+ITEMS[rare].name+'!'});
+      AudioSys.sfx('levelup');flash('#8a2f26',.7);
     }
     // kroniki łowów
     G.counters.kills=G.counters.kills||{};
@@ -3141,7 +3278,7 @@ class BattleScene{
       G.dread=Math.max(0,G.dread-30); // nakarmione cienie odpuszczają
       if(bumpCounter('nocne')>=5)unlockAchv('nocny_marek');
     }
-    this.rewards={xp,gold,drops,lvls:[]};
+    this.rewards={xp,gold,drops,lvls:[],specials};
     giveGold(gold);
     for(const it of drops)addItem(it);
     for(const h of G.party){
@@ -3167,6 +3304,7 @@ class BattleScene{
     for(const h of G.party){h.buffs={};}
     popScene();
     if(G.mapId&&MAPS[G.mapId])AudioSys.music(MAPS[G.mapId].music||'world');
+    if(this.opts.boss)saveGame(0); // autozapis po bossie
     if(this.opts.onWin)this.opts.onWin();
   }
   // ---- sterowanie ----
@@ -3192,8 +3330,10 @@ class BattleScene{
         if(u.h.sp<s.sp){AudioSys.sfx('cancel');this.say('Za mało wigoru!');return;}
         AudioSys.sfx('confirm');this.pendSkill=ls[this.si];this.pendItem=null;
         if(s.target==='enemy'){this.targetPool=this.aliveFoes();this.subMenu='target';this.backMenu='skills';this.ti=0;}
-        else if(s.target==='ally'){this.targetPool=this.heroes.filter(x=>s.revive?x.h.hp<=0:this.alive(x));
-          if(!this.targetPool.length){this.say('Nie ma celu.');return;}
+        else if(s.target==='ally'){
+          this.targetPool=this.heroes.filter(x=>s.revive?x.h.hp<=0:
+            (this.alive(x)&&(!s.heal||x.h.hp<hstat(x.h,'hp')||(s.cure&&Object.keys(x.h.status).length>0))));
+          if(!this.targetPool.length){this.say(s.revive?'Nikt nie padł.':'Wszyscy w pełni sił.');return;}
           this.subMenu='target';this.backMenu='skills';this.ti=0;}
         else this.startCo(this.heroAttack(u,null,this.pendSkill,null));
       }
@@ -3208,8 +3348,10 @@ class BattleScene{
         const id=ls[this.si],it=ITEMS[id];
         AudioSys.sfx('confirm');this.pendItem=id;this.pendSkill=null;
         if(it.dmg){this.targetPool=this.aliveFoes();this.subMenu='target';this.backMenu='items';this.ti=0;}
-        else{this.targetPool=this.heroes.filter(x=>it.revive?x.h.hp<=0:this.alive(x));
-          if(!this.targetPool.length){this.say('Nie ma celu.');return;}
+        else{
+          this.targetPool=this.heroes.filter(x=>it.revive?x.h.hp<=0:
+            (this.alive(x)&&(it.buff||!it.heal||x.h.hp<hstat(x.h,'hp')||(it.cure&&Object.keys(x.h.status).length>0)||(it.spRest&&x.h.sp<hstat(x.h,'sp')))));
+          if(!this.targetPool.length){this.say(it.revive?'Nikt nie padł.':'Wszyscy w pełni sił.');return;}
           this.subMenu='target';this.backMenu='items';this.ti=0;}
       }
       return;
@@ -3262,6 +3404,7 @@ class BattleScene{
   }
   // ---- aktualizacja ----
   update(dt){
+    if(this.freeze>0){this.freeze-=dt;return;} // hit-stop: świat zamiera na mgnienie
     this.t+=dt;
     if(this.state==='intro'&&this.t>1){this.state='';this.nextTurn();}
     if(this.state==='anim'&&this.co){
@@ -3281,6 +3424,15 @@ class BattleScene{
       u.flash=Math.max(0,u.flash-dt*4);
       u.offX+=(u.offTX-u.offX)*Math.min(1,dt*12);
       if(u.poseT>0){u.poseT-=dt;if(u.poseT<=0&&u.pose==='hurt')u.pose=this.uHp(u)<=0?'ko':'idle';}
+      // pokonany boss osuwa się i powoli krwawi
+      if(u.kind==='foe'&&u.slowDie!==undefined&&u.slowDie<3.6){
+        const prev=u.slowDie;u.slowDie+=dt;
+        if(Math.floor(u.slowDie*4)!==Math.floor(prev*4)){
+          const px=u.x+u.spr.w*u.scale/2+rnd.i(-10,10),py=u.y+16+rnd.i(0,10);
+          this.parts.push({x:px,y:py,vx:rnd.range(-5,5),vy:26,c:rnd.chance(.5)?'#8a2f26':'#5e1a14',t:.9,g:110});
+        }
+        if(u.slowDie>=3.6)u.dying=1;
+      }
       if(u.kind==='foe'&&u.dying>0&&u.dying<2)u.dying+=dt*2.2;
     }
     for(const p of this.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=p.g*dt;p.t-=dt;}
@@ -3299,22 +3451,31 @@ class BattleScene{
     const foesSorted=this.foes.slice().sort((a,b)=>a.y-b.y);
     for(const f of foesSorted){
       if(f.dying>=2)continue;
-      const fr=(f.pose==='attack'&&f.spr.attack)?f.spr.attack[f.offX>10?1:0]:f.spr.frames[Math.floor(gTime*2.2)%2];
+      let fr;
+      if(f.pose==='attack'&&f.spr.attack)fr=((f.marked&&f.spr.markedAttack)?f.spr.markedAttack:f.spr.attack)[f.offX>10?1:0];
+      else fr=((f.marked&&f.spr.markedFrames)?f.spr.markedFrames:f.spr.frames)[Math.floor(gTime*2.2)%2];
       const w=f.spr.w*f.scale,h=f.spr.h*f.scale;
-      const fx=Math.round(f.x+f.offX),fy=Math.round(f.y-h+34);
+      const sink=f.slowDie!==undefined?Math.min(8,f.slowDie*4):0;
+      const fx=Math.round(f.x+f.offX),fy=Math.round(f.y-h+34+sink);
       ctx.save();
       if(f.dying>0)ctx.globalAlpha=Math.max(0,1-(f.dying-1)*1);
+      // kałuża krwi pod osuwającym się bossem
+      if(f.slowDie!==undefined){
+        const pw=Math.min(1,f.slowDie/2.5)*w*.55;
+        if(pw>1){ctx.fillStyle='rgba(86,16,14,.8)';ctx.beginPath();ctx.ellipse(fx+w/2,f.y+35,pw,Math.max(2,pw*.2),0,0,7);ctx.fill();}
+      }
       // cień
       ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(fx+w/2,f.y+34,w*.4,5,0,0,7);ctx.fill();
       ctx.drawImage(fr,fx,fy,w,h);
       if(f.flash>0){ctx.globalAlpha=Math.min(1,f.flash);ctx.drawImage(f.spr.flash,fx,fy,w,h);ctx.globalAlpha=1;}
       if(f.guarding&&this.alive(f))ctx.drawImage(IMG.icons.st_shield,fx+(w>>1)-6,fy-13);
+      if(f.marked&&this.alive(f))txt('✦',fx+w/2,fy-12+Math.sin(gTime*5)*2,'#e85a4a',9,'center',true,'#0a0705');
       ctx.restore();
       // wskaźnik celu
       if(this.subMenu==='target'&&this.targetPool[this.ti]===f){
         const bob=Math.sin(gTime*8)*2;
         txt('▼',fx+w/2,fy-14+bob,'#f0d050',10,'center');
-        txt(f.d.name,fx+w/2,fy-26+bob,'#f0d9a3',8,'center',true,'#0a0705');
+        txt((f.marked?'✦ ':'')+f.d.name,fx+w/2,fy-26+bob,f.marked?'#e85a4a':'#f0d9a3',8,'center',true,'#0a0705');
       }
       // pasek bossa
       if(f.d.boss&&this.alive(f)){
@@ -3408,24 +3569,25 @@ class BattleScene{
     });
     // opis spotkania
     const foesLeft=this.aliveFoes();
-    let foesTxt=foesLeft.map(f=>f.d.name).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+    let foesTxt=foesLeft.map(f=>(f.marked?'✦':'')+f.d.name).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
     if(foesTxt.length>30)foesTxt=foesTxt.slice(0,29)+'…';
     txt(foesTxt,344,192,'#8d8270',7);
     // ekran zwycięstwa
     if(this.state==='win'){
       const r=this.rewards;
-      const hgt=86+r.lvls.length*12;
-      panel(W/2-110,52,220,hgt);
-      txt('ZWYCIĘSTWO',W/2,60,'#c9a35a',12,'center');
-      ctx.fillStyle='#8a7142';ctx.fillRect(W/2-80,76,160,1);
-      ctx.drawImage(IMG.icons.xp,W/2-76,82);
-      txt(r.xp+' doświadczenia',W/2-60,84,'#d8cdb8',8);
-      ctx.drawImage(IMG.icons.gold,W/2-76,96);
-      txt(r.gold+' szt. srebra',W/2-60,98,'#d8cdb8',8);
-      let yy=112;
+      const hgt=86+r.lvls.length*12+r.drops.length*12+(r.specials?r.specials.length*12:0);
+      panel(W/2-118,46,236,hgt);
+      txt('ZWYCIĘSTWO',W/2,54,'#c9a35a',12,'center');
+      ctx.fillStyle='#8a7142';ctx.fillRect(W/2-80,70,160,1);
+      ctx.drawImage(IMG.icons.xp,W/2-76,76);
+      txt(r.xp+' doświadczenia',W/2-60,78,'#d8cdb8',8);
+      ctx.drawImage(IMG.icons.gold,W/2-76,90);
+      txt(r.gold+' szt. srebra',W/2-60,92,'#d8cdb8',8);
+      let yy=106;
       for(const d of r.drops){txt('Łup: '+ITEMS[d].name,W/2-60,yy,'#8ad07a',8);yy+=12;}
+      for(const s of(r.specials||[])){txt(s.t,W/2,yy,Math.floor(gTime*6)%2?s.c:'#fff0d0',8,'center');yy+=12;} // migocze
       for(const l of r.lvls){txt(l,W/2,yy,'#f0d050',8,'center');yy+=12;}
-      txt('Z — dalej',W/2,52+hgt-14,'#5e5648',7,'center');
+      txt('Z — dalej',W/2,46+hgt-14,'#5e5648',7,'center');
     }
     drawToasts();
     // przejście-przesłona
@@ -3451,10 +3613,10 @@ const SCRIPTS={
     {run:()=>{G.chapter='Pieśń I — Popiół';}},
   ],
   t_oboz:()=>[
-    {say:['','Na polanie tli się ognisko. Ktoś tu obozował — i ten ktoś właśnie wychodzi zza drzew.']},
-    {say:['','— Patrzcie no. Mięso samo lezie do kotła — szczerzy się bandyta.']},
+    {say:['','Obóz bandytów. Przy ognisku namiot pilnowany jak skarbiec. Czujka spostrzega cię pierwsza i gwiżdże na palcach.']},
+    {say:['','— Patrzcie no. Klient do towaru? Czy mięso do kotła? — śmieje się dwóch, odcinając ci drogę.']},
     {battle:{group:['bandyta','klusownik'],bg:'forest',canFlee:false}},
-    {say:['brand','Las pełen takich. Ale ci mieli przy sobie żołd. Świeży żołd. Ktoś im płaci.']},
+    {say:['brand','Mieli przy sobie świeży żołd. A w namiocie trzymają coś... albo kogoś. Strażnik przy wejściu wygląda na skorego do interesów, nie do bitki.']},
     {gold:45},
   ],
   t_twierdza_gate:()=>[
@@ -3537,7 +3699,7 @@ const NPC_DLG={
     {say:['karczmarz','Karczma "Pod Kopciem". Strawa, nocleg, i żadnych pytań o znak na twoim karku.']},
     {choice:[
       {t:'Nocleg (20 srebra)',do:G.gold>=20?[{gold:-20},{say:['karczmarz','Izba na górze. Śpij, póki noc nie twoja.']},{heal:true},{say:['','Drużyna odpoczywa. Rany się zasklepiają, wigor wraca.']}]:[{say:['karczmarz','Bez srebra nie ma siana, taki świat.']}]},
-      {t:'Plotki',do:[{say:['karczmarz','Bandyci z lasu od miesiąca płacą czystym srebrem. Ktoś im sypnął. A nocą... nocą lepiej nie wychodź, odkąd niebo się wtedy zaczerwieniło.']}]},
+      {t:'Plotki',do:G.flags.mira_joined?[{say:['karczmarz','Bandyci z lasu od miesiąca płacą czystym srebrem. Ktoś im sypnął. A nocą... nocą lepiej nie wychodź, odkąd niebo się wtedy zaczerwieniło.']}]:[{say:['karczmarz','Bandyci wzięli zakładniczkę — tę z piętnem, co wypytywała o twoją kompanię. Żądają stu pięćdziesięciu srebrników. Mówię ci: srebro w lesie leży, tylko trzeba je z bandyckich kieszeni wytrząsnąć.']}]},
       {t:'Wyjdź',do:[]},
     ]},
   ],
@@ -3545,6 +3707,7 @@ const NPC_DLG={
     {say:['kowal','Wejdź. Stal tu uczciwa, ceny mniej.']},
     {choice:[
       {t:'Pokaż towar',do:[{shop:'kowal'}]},
+      {t:'Hartowanie oręża',do:[{say:['kowal','Dawaj żelazo na kowadło. Kły, skóry, ruda — z tego robi się stal, co pamięta rękę właściciela.']},{forge:true}]},
       {t:'O tym wielkim mieczu',do:[{say:['kowal','Twoje żelazo widziało więcej niż niejeden grób. Dwuręczny, kuty na zamówienie... Kruki, co? Słyszałem, co ich spotkało. Współczuję, najemniku.']}]},
       {t:'Wyjdź',do:[]},
     ]},
@@ -3569,7 +3732,9 @@ const NPC_DLG={
   soltys:()=>{
     if(!G.flags.mira_joined)return[
       {say:['soltys','Najemnik z piętnem... Słyszałem, co się stało z Krukami. Cała okolica słyszała — niebo było czerwone przez pół nocy.']},
-      {say:['soltys','Jeśli szukasz śladów, to bandyci z Czarnego Lasu od tamtej nocy mają pełne kabzy. A w karczmie siedzi kobieta, co przyszła tu dzień po tobie. Ma to samo spojrzenie co ty. I ten sam znak.']},
+      {say:['soltys','Dzień po tobie zjawiła się tu kobieta. Ten sam znak na karku, to samo spojrzenie. Poszła w Czarny Las za bandytami — i wpadła. Trzymają ją w obozie przy ognisku.']},
+      {say:['soltys','Bandyci nie zabijają tych, za których można wziąć okup. Posłali wiadomość: sto pięćdziesiąt sztuk srebra. Ja tyle nie mam. Może ty uzbierasz, najemniku.']},
+      {quest:'glowny',stage:0},
     ];
     if(!G.flags.twierdza_boss)return[{say:['soltys','Twierdza bandytów leży na północ od traktu, w głębi lasu. Idźcie za dnia. Nocą las należy do... innych.']}];
     return[{say:['soltys','Mówią, że herszt bandytów nie żyje. Wioska odetchnie. Cokolwiek tam dalej znajdziecie — niech was prowadzi.']}];
@@ -3608,15 +3773,31 @@ const NPC_DLG={
     ];
     return[{say:['ranny','Jeszcze dycham, najemniku. Jak skończysz, co zacząłeś... opowiedz mi. Chcę umrzeć, wiedząc, że któryś z nas wygrał.']}];
   },
-  mira_join:()=>[
-    {say:['mira','...Brand. Żyjesz. Z całej kompanii myślałam, że tylko ja się wygrzebałam spod tych ciał.']},
-    {say:['brand','Mira. Dowódczyni chorągwi. Widziałaś, co to było?']},
-    {say:['mira','Widziałam dość, żeby wiedzieć, że to nie była robota ludzi. Ale wynajęli nas ludzie i wydali nas ludzie. Bandyci w lesie mają od tamtej nocy pełne kieszenie — od kogoś dostali list. Z pieczęcią.']},
-    {say:['mira','Idę po ten list. Ze mną czy beze mnie — ale we dwoje mamy więcej szans, Brand.']},
-    {join:'mira'},
-    {flag:'mira_joined'},
-    {quest:'glowny',stage:1},
-  ],
+  okup:()=>{
+    if(G.gold<150)return[
+      {say:['','Bandyta przy namiocie mierzy cię wzrokiem i szczerzy zęby.']},
+      {say:['','— Towar w namiocie, cena na bramie: sto pięćdziesiąt srebra. Masz... — zagląda ci teatralnie w sakwę — ...mniej. Wróć z pełną sakwą albo wcale.']},
+      {say:['brand','(150 srebra. Bandyci na trakcie noszą po kilkanaście sztuk. Skrzynie. Wilcze skóry. Uzbieram.)']},
+    ];
+    return[
+      {say:['','— Sto pięćdziesiąt. Z góry — mówi bandyta, ważąc słowa jak srebro.']},
+      {choice:[
+        {t:'Zapłać 150 srebra',do:[
+          {gold:-150},
+          {say:['','Bandyta przelicza monety dwa razy, gwiżdże i rozcina rzemienie u wejścia namiotu. — Interes to interes. Zabieraj ją i nie wracaj.']},
+          {say:['mira','...Brand? BRAND. Z całej kompanii myślałam, że tylko ja wygrzebałam się spod tych ciał. A ty... ty mnie właśnie KUPIŁEŚ?']},
+          {say:['brand','Odkupiłem. To różnica. Możesz oddać z żołdu, dowódczyni.']},
+          {say:['mira','Widziałam dość, by wiedzieć, że to nie ludzie wyrżnęli kompanię. Ale wydali nas ludzie. Ci tutaj dostali list z herbową pieczęcią — widziałam go, zanim mnie związali. Jest w twierdzy.']},
+          {join:'mira'},
+          {run:()=>{const m=G.party.find(h=>h.id==='mira');if(m)m.hp=Math.max(1,Math.round(hstat(m,'hp')*.4));}},
+          {flag:'mira_joined'},
+          {quest:'glowny',stage:1},
+          {say:['mira','Dwa dni w rzemieniach. Daj mi tylko chwilę i bandaż, a pokażę ci drogę do ich twierdzy.']},
+        ]},
+        {t:'Odejdź',do:[{say:['','— Przemyśl to — rzuca bandyta za tobą. — Towar nie zepsuje się szybko. Ale klientka może.']}]},
+      ]},
+    ];
+  },
   kiel_talk:()=>[{say:['kiel','Czego się gapisz? Wiesz, czyja to twierdza. Wyłaź, póki masz nogi.']}],
   wit_cell:()=>{
     if(!G.flags.twierdza_boss)return[
@@ -4034,13 +4215,13 @@ Object.assign(ENEMIES,{
     desc:'Górnicy mówili o "żyle, która oddycha". Potem przestali mówić w ogóle.'},
 });
 Object.assign(ENC,{
-  pobojowisko:{rate:.13,music:'battle',bg:'battlefield',
+  pobojowisko:{rate:.065,music:'battle',bg:'battlefield',
     day:[['grasant'],['grasant','grasant'],['weteran'],['ghul'],['weteran','grasant'],['kruki','ghul']],
     night:[['upior','upior'],['choragzy'],['ghul','upior'],['cien','cien'],['upior','upior','upior']]},
-  wybrzeze:{rate:.13,music:'battle',bg:'coast',
+  wybrzeze:{rate:.065,music:'battle',bg:'coast',
     day:[['przemytnik'],['krab'],['przemytnik','krab'],['morski'],['krab','krab'],['przemytnik','przemytnik']],
     night:[['morski','morski'],['upior','morski'],['cien','morski']]},
-  kopalnie:{rate:.12,music:'battle',bg:'mine',
+  kopalnie:{rate:.06,music:'battle',bg:'mine',
     day:[['slepy_gornik'],['nietoperze'],['gniazdowiec'],['gniazdowiec','nietoperze'],['slepy_gornik','gniazdowiec'],['gniazdowiec','gniazdowiec']],night:null},
 });
 
@@ -4271,7 +4452,11 @@ Object.assign(NPC_DLG,{
   ],
   kuznia2:()=>[
     {say:['','Kuźnia Przystani. Nad paleniskiem wisi szyld: "Stal morska, czarna i hartowana. Dla naznaczonych bez targowania."']},
-    {shop:'bron2'},
+    {choice:[
+      {t:'Handel',do:[{shop:'bron2'}]},
+      {t:'Hartowanie oręża',do:[{forge:true}]},
+      {t:'Wyjdź',do:[]},
+    ]},
   ],
   dom_hoddera:()=>[{say:['','Izba werbownika. Na stole mapa z czterdziestoma skreślonymi nazwiskami. Hodder kręci się gdzieś po rynku.']}],
   chata_rybaka:()=>[{say:['','Sieci, sól i wiatr. Ulf mieszka bliżej morza niż ludzi.']}],
@@ -4422,6 +4607,187 @@ Object.assign(SCRIPTS,{
   };
   for(const k in DESC2)if(ENEMIES[k])ENEMIES[k].desc2=DESC2[k];
 }
+
+//================ PIEŚŃ TRZECIA ================
+// --- materiały rzemieślnicze ---
+Object.assign(ITEMS,{
+  kiel_b:{name:'Kieł bestii',type:'mat',price:16,icon:'fang',desc:'Twardy jak gwóźdź. Kowale mielą je do hartowania.'},
+  skora:{name:'Twarda skóra',type:'mat',price:18,icon:'hide',desc:'Wyprawiona na wozie, wędzona przy ognisku.'},
+  ruda:{name:'Ruda żelaza',type:'mat',price:20,icon:'ore',desc:'Bryłka z bandyckiej sakwy albo kopalnianej hałdy.'},
+  esencja:{name:'Krwawa esencja',type:'mat',price:60,icon:'essence',desc:'Skrzep z naznaczonego. Wciąż lekko pulsuje.'},
+});
+function makeIcons2(){
+  const I=IMG.icons;
+  const mk=fn=>{const p=new Pix(12,12);fn(p);p.outline();return p.toCanvas();};
+  I.fang=mk(p=>{p.line(4,2,6,9,0xe8e0d0);p.line(5,2,7,8,0xd0c8b8);p.set(6,10,0xb8b0a0);p.set(4,1,0xb0a890);});
+  I.hide=mk(p=>{p.frect(3,3,6,6,0x8a5a32);p.set(2,4,0x8a5a32);p.set(9,4,0x8a5a32);p.set(2,8,0x8a5a32);p.set(9,8,0x8a5a32);p.frect(4,4,2,2,0xa8744a);});
+  I.ore=mk(p=>{p.ellipse(6,7,3.4,2.8,0x5a5248);p.set(5,6,0x8a96a2);p.set(7,8,0x8a96a2);p.set(6,5,0x6e6457);});
+  I.essence=mk(p=>{p.ellipse(6,7,2.6,3.2,0x8a1f2a);p.set(5,5,0xc23a4a);p.set(6,3,0x8a1f2a);p.set(7,9,0x5e1018);});
+}
+makeIcons2();
+// --- nowe propsy: namiot i tabliczka z czaszką ---
+{
+  const P=IMG.props;
+  {const p=new Pix(30,24),r=RNG(3100),cl=0x5a5040;
+    for(let y=0;y<16;y++){const ins=Math.floor((15-y)*0.85);
+      p.frect(2+ins,y+4,26-ins*2,1,y%4===0?dim(cl,.15):(y%4===2?lit(cl,.06):cl));}
+    p.frect(14,2,2,18,0x3a2c1c);
+    for(let y=10;y<20;y++){const w2=Math.floor((y-9)*0.8);p.frect(15-w2,y,Math.max(1,w2*2),1,0x191410);} // wejście
+    p.frect(2,19,26,2,dim(cl,.25));
+    p.noise(r,.1,.25);p.shade(.7);p.outline();P.tent=propFromPix(p);}
+  {const p=new Pix(14,16),wd=0x42321f;
+    p.frect(6,8,2,8,dim(wd,.1));p.frect(2,1,10,8,wd);p.frect(3,2,8,6,lit(wd,.08));
+    const r2=0xb8453a;
+    p.ellipse(7,4,2.4,2,r2);p.frect(6,6,3,1,r2);p.set(6,4,0x14100a);p.set(8,4,0x14100a);
+    p.shade(.6);p.outline();P.skullsign=propFromPix(p);}
+}
+// strażnik okupu (sprite chodu z wyglądu bandyty)
+IMG.npcs.bandyta_s={walk:walkSheet(FOE_LOOKS.bandyta),portrait:portraitPix(FOE_LOOKS.bandyta).toCanvas()};
+DISPLAY_NAMES.bandyta_s='Bandyta';
+// --- tabliczki z czerwoną czaszką przed legowiskami ---
+MAPS.las.objects.push({type:'sign',skull:true,x:32,y:2,text:'Twierdza bandytów. Wstęp: życie. Wyjścia nie gwarantujemy.'});
+MAPS.bagna.objects.push({type:'sign',skull:true,x:17,y:19,text:'Dom popiołu. Klęknij albo zawróć.'});
+MAPS.przelecz.objects.push({type:'sign',skull:true,x:37,y:7,text:'Zamek rodu Vorlec. Gości prosimy o spisanie testamentu.'});
+MAPS.pobojowisko.objects.push({type:'sign',skull:true,x:9,y:3,text:'Szyb Starych Kopalń. Zeszło czterdziestu. Wyszło: patrz niżej. Nikt.'});
+MAPS.wybrzeze.objects.push({type:'sign',skull:true,x:27,y:11,text:'Wrak „Świętego Brendana". Kapitan pobiera myto. Topielcy resztę.'});
+
+//================ ŚWIT — animacja snu w karczmie ================
+class DawnScene{
+  constructor(cb){this.overlay=false;this.t=0;this.cb=cb;this.done=false;
+    this.stars=[];const r=RNG(7);
+    for(let i=0;i<44;i++)this.stars.push([r.f()*W,r.f()*120,r.range(.3,.9)]);}
+  enter(){AudioSys.sfx('holy');}
+  key(a){if(a==='ok'||a==='cancel')this.finish();}
+  finish(){if(this.done)return;this.done=true;popScene();if(this.cb)this.cb();}
+  update(dt){this.t+=dt;if(this.t>4.6)this.finish();}
+  draw(){
+    const t=this.t,ph=clamp(t/4,0,1);
+    // niebo przechodzi od granatu nocy do złota świtu
+    for(let y=0;y<H;y+=2){
+      const f=y/H;
+      const top=lerpC(0x0a0c1e,0x3a2040,ph),mid=lerpC(0x141030,0x9a4650,ph),low=lerpC(0x1a1428,0xd8924e,ph);
+      const c=f<.5?lerpC(top,mid,f*2):lerpC(mid,low,(f-.5)*2);
+      ctx.fillStyle=hex(c);ctx.fillRect(0,y,W,2);
+    }
+    // gwiazdy gasną
+    const sa=Math.max(0,1-ph*1.7);
+    if(sa>0){ctx.fillStyle='#e8e6da';
+      for(const[x,y,a]of this.stars){ctx.globalAlpha=sa*a;ctx.fillRect(Math.round(x),Math.round(y),1,1);}
+      ctx.globalAlpha=1;}
+    // wschodzące słońce
+    const sx=W*0.62,sy=lerp(H*0.92,H*0.46,ph);
+    const g=ctx.createRadialGradient(sx,sy,4,sx,sy,90);
+    g.addColorStop(0,'rgba(255,224,150,.9)');g.addColorStop(.3,'rgba(240,170,90,.4)');g.addColorStop(1,'rgba(240,170,90,0)');
+    ctx.fillStyle=g;ctx.fillRect(sx-90,sy-90,180,180);
+    ctx.fillStyle='#f4d690';ctx.beginPath();ctx.arc(sx,sy,10,0,7);ctx.fill();
+    ctx.fillStyle='#fff0c8';ctx.beginPath();ctx.arc(sx-3,sy-3,4,0,7);ctx.fill();
+    // sylwetka karczmy z dymem
+    ctx.fillStyle='#0d0a08';
+    ctx.fillRect(0,H-58,W,58);
+    ctx.beginPath();ctx.moveTo(30,H-58);ctx.lineTo(120,H-108);ctx.lineTo(210,H-58);ctx.closePath();ctx.fill();
+    ctx.fillRect(146,H-126,11,46);
+    ctx.fillRect(250,H-74,60,16);ctx.fillRect(300,H-90,8,32); // zabudowania i studnia w tle
+    ctx.fillStyle='rgba(170,160,150,.32)';
+    for(let i=0;i<6;i++){const yy=H-130-i*9-((t*14)%9),xx=149+Math.sin(t*1.2+i)*4;ctx.fillRect(Math.round(xx),Math.round(yy),3,3);}
+    // przelatujące kruki
+    ctx.fillStyle='#16120e';
+    for(let i=0;i<3;i++){
+      const kx=((t*42+i*70)%(W+80))-40,ky=58+i*18+Math.sin(t*3+i*2)*4,fl=Math.floor(t*7+i)%2;
+      ctx.fillRect(Math.round(kx-3),Math.round(ky-fl),3,1);ctx.fillRect(Math.round(kx+1),Math.round(ky-fl),3,1);ctx.fillRect(Math.round(kx),Math.round(ky),1,1);
+    }
+    // napis
+    if(ph>.35){
+      const a=Math.min(1,(ph-.35)*3);
+      ctx.globalAlpha=a;octx.globalAlpha=a;
+      txt('Świt — dzień '+(G.counters.days||1),W/2,40,'#f0d9a3',13,'center',true,'#1a0f08');
+      txt('Rany się zasklepiły. Piętno przysnęło. Na chwilę.',W/2,58,'#c8b894',8,'center');
+      ctx.globalAlpha=1;octx.globalAlpha=1;
+    }
+  }
+}
+
+//================ KUŹNIA — hartowanie oręża (+1…+5) ================
+class ForgeScene{
+  constructor(){this.overlay=true;this.step='hero';this.hi=0;this.si=0;this.msg=null;}
+  matsTotal(){return(G.inv.kiel_b||0)+(G.inv.skora||0)+(G.inv.ruda||0)+(G.inv.esencja||0);}
+  cost(lvl){return{mats:2+lvl,gold:Math.round(50*Math.pow(lvl+1,1.5))};}
+  spendMats(n){for(const id of['ruda','skora','kiel_b','esencja']){while(n>0&&(G.inv[id]||0)>0){remItem(id);n--;}if(n<=0)break;}}
+  key(a){
+    if(a==='cancel'){AudioSys.sfx('cancel');if(this.step==='slot')this.step='hero';else popScene();return;}
+    if(this.step==='hero'){
+      if(a==='up'){this.hi=Math.max(0,this.hi-1);AudioSys.sfx('cursor');}
+      if(a==='down'){this.hi=Math.min(G.party.length-1,this.hi+1);AudioSys.sfx('cursor');}
+      if(a==='ok'){AudioSys.sfx('confirm');this.step='slot';this.si=0;}
+      return;
+    }
+    if(a==='up'||a==='down'){this.si=1-this.si;AudioSys.sfx('cursor');}
+    if(a==='ok'){
+      const h=G.party[this.hi],slot=['weapon','armor'][this.si];
+      if(!h.equip[slot]){this.msg='Najpierw trzeba coś nosić.';AudioSys.sfx('cancel');return;}
+      const lvl=(h.upg&&h.upg[slot])||0;
+      if(lvl>=5){this.msg='Lepiej tej stali już nie zahartuję.';AudioSys.sfx('cancel');return;}
+      const c=this.cost(lvl);
+      if(this.matsTotal()<c.mats){this.msg='Za mało materiałów ('+this.matsTotal()+'/'+c.mats+').';AudioSys.sfx('cancel');return;}
+      if(G.gold<c.gold){this.msg='Za mało srebra.';AudioSys.sfx('cancel');return;}
+      this.spendMats(c.mats);giveGold(-c.gold);
+      if(!h.upg)h.upg={weapon:0,armor:0};
+      h.upg[slot]=lvl+1;
+      AudioSys.sfx('levelup');flash('#e89030',.5);shake(2);
+      this.msg=eqName(h,slot)+' — zahartowane!';
+    }
+  }
+  update(){}
+  draw(){
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,0,W,H);
+    panel(70,30,W-140,H-70);
+    txt('KUŹNIA — HARTOWANIE',W/2,40,'#e89030',11,'center');
+    ctx.fillStyle='#8a7142';ctx.fillRect(90,56,W-180,1);
+    // zapasy
+    let mx=90;
+    for(const[id,ic]of[['ruda','ore'],['skora','hide'],['kiel_b','fang'],['esencja','essence']]){
+      ctx.drawImage(IMG.icons[ic],mx,62);txt('×'+(G.inv[id]||0),mx+14,64,'#b8ad98',8);mx+=46;
+    }
+    ctx.drawImage(IMG.icons.gold,mx+8,62);txt(G.gold+'',mx+22,64,'#c9a35a',8);
+    // bohaterowie
+    G.party.forEach((h,i)=>{
+      const y=84+i*42,sel=this.step==='hero'&&i===this.hi;
+      if(sel){ctx.fillStyle='rgba(232,144,48,.1)';ctx.fillRect(84,y-4,W-168,40);}
+      ctx.drawImage(IMG.heroes[h.id].portrait,90,y,28,28);
+      txt(HEROES[h.id].name,124,y,sel?'#f0d9a3':'#d8cdb8',9);
+      const isH=this.step==='slot'&&i===this.hi;
+      [['weapon','Broń'],['armor','Pancerz']].forEach(([sl,nm],si)=>{
+        const yy=y+12+si*11,selS=isH&&si===this.si;
+        const lvl=(h.upg&&h.upg[sl])||0,c=this.cost(lvl);
+        txt((selS?'▸ ':'  ')+nm+': '+eqName(h,sl),124,yy,selS?'#f0d9a3':'#9a8f7c',7);
+        if(h.equip[sl]&&lvl<5)txt('→ +'+(lvl+1)+'  ('+c.mats+' mat., '+c.gold+' srebra)',300,yy,selS?'#e89030':'#6e6456',7);
+        else if(h.equip[sl])txt('MAX',300,yy,'#8ad07a',7);
+      });
+    });
+    txt(this.step==='hero'?'Wybierz wojownika (Z)':'Wybierz, co hartować (Z) — X wraca',W/2,H-58,'#8d8270',7,'center');
+    if(this.msg){panel(110,H-46,W-220,22,.95);txt(this.msg,W/2,H-40,'#e8dcc0',8,'center');}
+  }
+}
+
+//================ HUD CELU (dyskretny) ================
+function hudGoal(){
+  if(G.flags.freeplay)return null;
+  if(!G.flags.mira_joined&&G.quests.glowny===0)return 'Okup za pojmaną: '+Math.min(G.gold,150)+'/150 srebra (obóz w lesie)';
+  if(G.quests.choragiew!==undefined&&G.quests.choragiew<3)
+    return['Znajdź ślad chorągwi na pobojowisku','Zejdź do Starych Kopalń','Wróć do Hoddera w Przystani'][G.quests.choragiew];
+  if(G.quests.relikwia===0)return'Odzyskaj relikwiarz z wraku na zatoce';
+  const MAIN=['Rozpytaj w Popielniku o bandytów','Zdobądź list w twierdzy bandytów','Przez bagna do spalonej katedry','Przez Przełęcz Kruków, do zamku','Stań przed hrabią Vorlec',null];
+  if(G.quests.glowny!==undefined)return MAIN[Math.min(G.quests.glowny,5)];
+  return null;
+}
+
+//================ KRONIKA AKTUALIZACJI ================
+const GAME_VER='Pieśń III';
+const CHANGELOG=[
+  {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami.'},
+  {v:'Pieśń II',t:'Świat rośnie',d:'Cztery nowe krainy: Pobojowisko Stu Chorągwi, Przystań Maruderów z gotyckim kościołem i domami z muru pruskiego, Wybrzeże Wraków i Stare Kopalnie z Matką Gniazda. Pogoda (deszcz, mgła), kroniki łowów w bestiariuszu, zadania „Zaginiona chorągiew" i „Relikwia z głębin", dwunastu nowych wrogów.'},
+  {v:'Szlif',t:'Ostrzenie klingi',d:'Klatki ataku wrogów, ikona obrony, oddech przed Apostołem, kadr kinowy, rzadsze potyczki w lochach, poprawki błędów.'},
+  {v:'Pieśń I',t:'Narodziny pieśni',d:'Opowieść zemsty naznaczonego najemnika: siedem krain, pięciu bossów, trzech bohaterów, techniki za wigor, SZAŁ berserka, Uwaga Zasłony nocą, pieśni o czynach, minimapa.'},
+];
 
 // ===== APPEND POINT =====
 </script>
