@@ -38,10 +38,13 @@ const uiCv=document.getElementById('ui'),octx=uiCv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
 let SCALE=1;
 function fit(){
-  SCALE=Math.max(1,Math.floor(Math.min(innerWidth/W,innerHeight/H)));
-  cv.style.width=W*SCALE+'px';cv.style.height=H*SCALE+'px';
+  // kadr „kinowy": obraz celowo ~6% większy niż okno — krawędzie giną w cięciu
+  const fitS=Math.min(innerWidth/W,innerHeight/H);
+  const css=fitS*1.06;
+  SCALE=Math.max(1,Math.ceil(css)); // warstwa tekstu nadpróbkowana — zostaje ostra
+  cv.style.width=W*css+'px';cv.style.height=H*css+'px';
   uiCv.width=W*SCALE;uiCv.height=H*SCALE;
-  uiCv.style.width=W*SCALE+'px';uiCv.style.height=H*SCALE+'px';
+  uiCv.style.width=W*css+'px';uiCv.style.height=H*css+'px';
 }
 addEventListener('resize',fit);fit();
 
@@ -66,6 +69,7 @@ const held=new Set();
 const KEYMAP={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Enter:'ok',KeyZ:'ok',Space:'ok',Escape:'cancel',KeyX:'cancel',KeyM:'cancel',Tab:'cancel'};
 addEventListener('keydown',e=>{const a=KEYMAP[e.code];if(!a)return;e.preventDefault();AudioSys.unlock();if(!e.repeat){held.add(a);const s=topScene();if(s&&s.key)s.key(a);}});
 addEventListener('keyup',e=>{const a=KEYMAP[e.code];if(a)held.delete(a);});
+addEventListener('blur',()=>held.clear());
 addEventListener('pointerdown',()=>AudioSys.unlock());
 
 //================ SCENY ================
@@ -206,7 +210,7 @@ const AudioSys=(()=>{
 const SAVE_KEY='bloodmark_save_',OPTS_KEY='bloodmark_opts',ACHV_KEY='bloodmark_achv';
 const G={
   party:[],inv:{},gold:0,flags:{},bestiary:{},achv:{},counters:{},
-  mapId:null,px:5,py:5,dir:'down',steps:0,dread:0,
+  mapId:null,px:5,py:5,dir:'down',dread:0,
   playtime:0,dayT:0.3,chapter:'Prolog',
   opts:{music:.7,sfx:.8,textSpeed:1,shake:true},
 };
@@ -1407,11 +1411,11 @@ const ENC={
   przelecz:{rate:.12,music:'world',bg:'pass',
     day:[['dezerter'],['maruder'],['dezerter','dezerter'],['kruki'],['maruder','kruki'],['dezerter','kruki']],
     night:[['upior','upior'],['szkielet','szkielet'],['cien','cien']]},
-  twierdza:{rate:.16,music:'dungeon',bg:'fort',
+  twierdza:{rate:.12,music:'dungeon',bg:'fort',
     day:[['zboj'],['kusznik'],['zboj','kusznik'],['ogar','ogar'],['zbir'],['zbir','kusznik']],night:null},
-  katedra:{rate:.16,music:'dungeon',bg:'cathedral',
+  katedra:{rate:.12,music:'dungeon',bg:'cathedral',
     day:[['fanatyk'],['mnich'],['kusznik_zak','fanatyk'],['inkwizytor'],['mnich','fanatyk'],['inkwizytor','kusznik_zak']],night:null},
-  zamek:{rate:.16,music:'castle',bg:'castle',
+  zamek:{rate:.12,music:'castle',bg:'castle',
     day:[['gwardzista'],['czarny_kusznik'],['gwardzista','czarny_kusznik'],['ogar_hrabiego'],['gwardzista','gwardzista']],night:null},
 };
 
@@ -1717,8 +1721,7 @@ const Field={
     }
     // gracz
     const p=this.pl,lead=G.party[0]?G.party[0].id:'brand';
-    const pfr=p.moving?[0,1,0,2][Math.floor((p.mt+p.step)*2)%4]:0;
-    const pcv=IMG.heroes[lead].walk[G.dir][p.moving?[0,1,0,2][p.step]:0];
+    const pcv=IMG.heroes[lead].walk[G.dir][p.moving?[0,1,0,2][(p.step+(p.mt>0.5?1:0))%4]:0];
     ents.push({y:p.fy*16+16,draw:()=>ctx.drawImage(pcv,Math.round(p.fx*16)-cx,Math.round((p.fy+1)*16)-20-cy)});
     ents.sort((a,b)=>a.y-b.y);
     for(const e of ents)e.draw();
@@ -1777,45 +1780,46 @@ const Field={
       if(m.outdoor&&isNight()){txt('— noc. Piętno krwawi —',W/2,34,'#b8453a',8,'center');}
       ctx.globalAlpha=1;octx.globalAlpha=1;
     }
-    // minimapa
+    // minimapa (dosunięta do środka — krawędzie kadru giną w cięciu)
     {
       const ms=Math.min(64/(MC.mw*16),44/(MC.mh*16));
       const mw=Math.round(MC.mw*16*ms),mh=Math.round(MC.mh*16*ms);
-      panel(W-mw-12,6,mw+8,mh+8,.75);
+      const mx=W-mw-22,my=12;
+      panel(mx,my,mw+8,mh+8,.75);
       ctx.globalAlpha=.85;
-      ctx.drawImage(MC.frames[0],W-mw-8,10,mw,mh);
+      ctx.drawImage(MC.frames[0],mx+4,my+4,mw,mh);
       ctx.globalAlpha=1;
       for(const o of MC.objs)if(o.type==='exit'){
         ctx.fillStyle='#c9a35a';
-        ctx.fillRect(W-mw-8+Math.round(o.x*16*ms)-1,10+Math.round(o.y*16*ms)-1,2,2);
+        ctx.fillRect(mx+4+Math.round(o.x*16*ms)-1,my+4+Math.round(o.y*16*ms)-1,2,2);
       }
       const pl=this.pl;
       ctx.fillStyle=Math.floor(gTime*3)%2?'#e85a4a':'#b8453a';
-      ctx.fillRect(W-mw-8+Math.round((pl.fx*16+8)*ms)-1,10+Math.round((pl.fy*16+8)*ms)-1,2,2);
+      ctx.fillRect(mx+4+Math.round((pl.fx*16+8)*ms)-1,my+4+Math.round((pl.fy*16+8)*ms)-1,2,2);
       // Uwaga Zasłony (nocą w polu)
       if(m.outdoor&&nightAmount()>0.3){
-        const dy=mh+20;
+        const dy=my+mh+14;
         const pulse=G.dread>70?(.7+Math.sin(gTime*6)*.3):1;
-        panel(W-78,dy,72,17,.8);
-        ctx.drawImage(IMG.icons.skull,W-75,dy+2);
+        panel(W-88,dy,72,17,.8);
+        ctx.drawImage(IMG.icons.skull,W-85,dy+2);
         ctx.globalAlpha=pulse;
-        bar(W-60,dy+4,50,7,G.dread/100,'#a83a52','#5e1a2a');
+        bar(W-70,dy+4,50,7,G.dread/100,'#a83a52','#5e1a2a');
         ctx.globalAlpha=1;
-        txt('Zasłona patrzy',W-74,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
+        txt('Zasłona patrzy',W-84,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
       }
     }
     drawToasts();
   },
 };
 function drawToasts(){
-  let ty=H-64;
+  let ty=H-70;
   for(const t of toasts){
     const a=clamp(t.t,0,1);
     ctx.globalAlpha=a;octx.globalAlpha=a;
     const w=txtW(t.text,8)+34;
-    panel(W-w-6,ty,w,18,.85);
-    if(t.icon&&IMG.icons[t.icon])ctx.drawImage(IMG.icons[t.icon],W-w+2,ty+3);
-    txt(t.text,W-w+18,ty+5,'#d8cdb8',8);
+    panel(W-w-14,ty,w,18,.85);
+    if(t.icon&&IMG.icons[t.icon])ctx.drawImage(IMG.icons[t.icon],W-w-6,ty+3);
+    txt(t.text,W-w+10,ty+5,'#d8cdb8',8);
     ctx.globalAlpha=1;octx.globalAlpha=1;ty-=22;
   }
 }
@@ -2621,7 +2625,7 @@ class MenuScene{
 //================ EKRAN TYTUŁOWY ================
 const TitleScene={
   i:0,mode:'main',si:0,embers:[],
-  enter(){this.embers=[];AudioSys.music('title');FX.fadeDir=-1;},
+  enter(){this.embers=[];this.mode=this.wantLoad?'load':'main';this.wantLoad=false;this.i=0;AudioSys.music('title');FX.fadeDir=-1;},
   key(a){
     if(this.mode==='load'){
       if(a==='cancel'){this.mode='main';AudioSys.sfx('cancel');return;}
@@ -2695,7 +2699,7 @@ const GameOverScene={
     if(a==='up'||a==='down'){this.i=1-this.i;AudioSys.sfx('cursor');}
     if(a==='ok'){
       AudioSys.sfx('confirm');
-      if(this.i===0){this.toLoad=true;TitleScene.mode='load';fadeTo(()=>setScene(TitleScene));}
+      if(this.i===0){TitleScene.wantLoad=true;fadeTo(()=>setScene(TitleScene));}
       else fadeTo(()=>setScene(TitleScene));
     }
   },
@@ -3171,6 +3175,8 @@ class BattleScene{
     for(const f of this.floats){f.y+=f.vy*dt;f.vy+=20*dt;f.t-=dt;}
     this.floats=this.floats.filter(f=>f.t>0);
     if(this.msg&&(this.msg.t-=dt)<=0)this.msg=null;
+    for(const t of toasts)t.t-=dt;
+    while(toasts.length&&toasts[0].t<=0)toasts.shift();
   }
   // ---- rysowanie ----
   draw(){
@@ -3180,7 +3186,7 @@ class BattleScene{
     const foesSorted=this.foes.slice().sort((a,b)=>a.y-b.y);
     for(const f of foesSorted){
       if(f.dying>=2)continue;
-      const fr=f.spr.frames[Math.floor(gTime*2.2)%2];
+      const fr=(f.pose==='attack'&&f.spr.attack)?f.spr.attack[f.offX>10?1:0]:f.spr.frames[Math.floor(gTime*2.2)%2];
       const w=f.spr.w*f.scale,h=f.spr.h*f.scale;
       const fx=Math.round(f.x+f.offX),fy=Math.round(f.y-h+34);
       ctx.save();
@@ -3189,6 +3195,7 @@ class BattleScene{
       ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(fx+w/2,f.y+34,w*.4,5,0,0,7);ctx.fill();
       ctx.drawImage(fr,fx,fy,w,h);
       if(f.flash>0){ctx.globalAlpha=Math.min(1,f.flash);ctx.drawImage(f.spr.flash,fx,fy,w,h);ctx.globalAlpha=1;}
+      if(f.guarding&&this.alive(f))ctx.drawImage(IMG.icons.st_shield,fx+(w>>1)-6,fy-13);
       ctx.restore();
       // wskaźnik celu
       if(this.subMenu==='target'&&this.targetPool[this.ti]===f){
@@ -3198,8 +3205,8 @@ class BattleScene{
       }
       // pasek bossa
       if(f.d.boss&&this.alive(f)){
-        bar(W/2-90,10,180,6,f.hp/f.maxHp,'#9a4438','#5e2620');
-        txt(f.d.name,W/2,18,'#e8dcc0',8,'center',true,'#0a0705');
+        bar(W/2-90,16,180,6,f.hp/f.maxHp,'#9a4438','#5e2620');
+        txt(f.d.name,W/2,24,'#e8dcc0',8,'center',true,'#0a0705');
       }
     }
     // bohaterowie
@@ -3237,8 +3244,8 @@ class BattleScene{
     // komunikat
     if(this.msg){
       const w=txtW(this.msg.text,8)+30;
-      panel(W/2-w/2,30,w,18,.85);
-      txt(this.msg.text,W/2,35,'#e8dcc0',8,'center');
+      panel(W/2-w/2,36,w,18,.85);
+      txt(this.msg.text,W/2,41,'#e8dcc0',8,'center');
     }
     // panel UI
     panel(4,184,W-8,82);
@@ -3396,6 +3403,8 @@ const SCRIPTS={
     {say:['mira','To nie jest twój syn, Vorlec. I ty to wiesz.']},
     {say:['hrabia','MILCZ! Dość. Zasłona dała mi też coś jeszcze. Pokażę wam.']},
     {battle:{group:['hrabia'],bg:'castle',music:'boss',boss:true,canFlee:false}},
+    {say:['wit','On jeszcze dycha... Coś jest nie tak. Bandaże, szwy, SZYBKO — póki leży!']},
+    {run:()=>{for(const h of G.party){if(h.hp>0){h.hp=Math.min(hstat(h,'hp'),h.hp+Math.round(hstat(h,'hp')*.35));h.sp=Math.min(hstat(h,'sp'),h.sp+8);h.status={};}}}},
     {say:['','Hrabia pada na kolana — i zaczyna się śmiać. Śmiech przechodzi w bulgot. Skóra na jego plecach pęka jak przegniły żagiel.']},
     {say:['glos','OFIARA PRZYJĘTA. NACZYNIE OTWARTE. PATRZCIE, CO KUPIŁA ROZPACZ.']},
     {say:['','To, co wstaje z posadzki, nie ma już nic wspólnego z człowiekiem. Setka oczu otwiera się na cielsku. Na szczycie — mała, płacząca twarz hrabiego.']},
@@ -3517,12 +3526,16 @@ const NPC_DLG={
       {t:'Wyjdź',do:[]},
     ]},
   ],
-  livia:()=>[
-    {say:['dama','Nie podchodź z mieczem, najemniku. Jestem Livia. Byłam damą dworu na zamku Vorlec — uciekłam, kiedy zaczęło się... karmienie.']},
-    {say:['dama','Hrabia nocami schodzi do krypty. Wnosi tam kołyskę. A z krypty czasem wychodzi coś, co nosi jego płaszcz, ale ma za dużo łokci. Gwardia udaje, że nie widzi. Idziecie tam? To nie odwaga. To pogrzeb.']},
-    {say:['dama','Weźcie chociaż to. Znalazłam przy zwłokach kuriera.']},
-    {give:'sole'},
-  ],
+  livia:()=>{
+    if(!G.flags.livia_dar)return[
+      {say:['dama','Nie podchodź z mieczem, najemniku. Jestem Livia. Byłam damą dworu na zamku Vorlec — uciekłam, kiedy zaczęło się... karmienie.']},
+      {say:['dama','Hrabia nocami schodzi do krypty. Wnosi tam kołyskę. A z krypty czasem wychodzi coś, co nosi jego płaszcz, ale ma za dużo łokci. Gwardia udaje, że nie widzi. Idziecie tam? To nie odwaga. To pogrzeb.']},
+      {say:['dama','Weźcie chociaż to. Znalazłam przy zwłokach kuriera.']},
+      {flag:'livia_dar'},
+      {give:'sole'},
+    ];
+    return[{say:['dama','Grzejcie się, póki ogień wasz. I nie mówcie nikomu, że Livia żyje.']}];
+  },
   rotmistrz_talk:()=>[{say:['rotmistrz','Zawróćcie. To jedyna łaska, jaką mam dziś w ofercie.']}],
   hrabia_talk:()=>[{say:['hrabia','Goście. Jak miło. Podejdźcie — kołyska właśnie zasnęła.']}],
 };
