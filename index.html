@@ -210,7 +210,7 @@ const AudioSys=(()=>{
 const SAVE_KEY='bloodmark_save_',OPTS_KEY='bloodmark_opts',ACHV_KEY='bloodmark_achv';
 const G={
   party:[],inv:{},gold:0,flags:{},bestiary:{},achv:{},counters:{},
-  mapId:null,px:5,py:5,dir:'down',dread:0,
+  mapId:null,px:5,py:5,dir:'down',dread:0,weather:'clear',
   playtime:0,dayT:0.3,chapter:'Prolog',
   opts:{music:.7,sfx:.8,textSpeed:1,shake:true},
 };
@@ -437,6 +437,29 @@ function makeTiles(){
   T.void=mk(431,p=>p.frect(0,0,16,16,0x070605));
   T.floor_wood=mk(441,(p,r)=>{p.frect(0,0,16,16,0x4c3a26);for(let y=0;y<16;y+=4)p.frect(0,y+3,16,1,0x3a2c1c);
     for(let i=0;i<14;i++)p.set(r.i(0,15),r.i(0,15),r.pick([0x453420,0x54412c]));});
+  // --- bruk rynkowy (Przystań) ---
+  const brukFn=(p,r)=>{
+    p.frect(0,0,16,16,0x37322b); // fugi
+    for(let gy=0;gy<4;gy++)for(let gx=0;gx<4;gx++){
+      const x=gx*4+r.i(0,1),y=gy*4+r.i(0,1);
+      const c=r.pick([0x5a5248,0x534b41,0x615950,0x4f483e,0x564e42]);
+      p.ellipse(x+1.5,y+1.5,1.9,1.5,c);
+      p.set(x+1,y+1,lit(c,.16));
+    }
+  };
+  T.bruk=[mk(501,brukFn),mk(502,brukFn)];
+  // --- piasek plażowy ---
+  const sandFn=(p,r)=>{
+    p.frect(0,0,16,16,0x96865e);
+    for(let i=0;i<42;i++)p.set(r.i(0,15),r.i(0,15),r.pick([0x8b7b54,0xa19068,0x8f7f58,0x9c8c64]));
+    for(let i=0;i<3;i++)p.set(r.i(1,14),r.i(1,14),0x6e6248); // kamyki
+    if(r.chance(.4)){const x=r.i(2,13),y=r.i(2,13);p.set(x,y,0xc4ba9c);p.set(x+1,y,0xb0a688);} // muszelka
+    if(r.chance(.3)){const x=r.i(2,12),y=r.i(2,13);p.frect(x,y,3,1,0x86764e);} // smużka po fali
+  };
+  T.piasek=[mk(511,sandFn),mk(512,sandFn),mk(513,sandFn)];
+  // --- kopalnie ---
+  T.floor_mine=[stoneFloor(0x2c2620,241),stoneFloor(0x2c2620,242)];
+  T.wall_mine=wallSet(0x35291c,331);
 }
 
 //================ PROPSY ================
@@ -1050,7 +1073,8 @@ function apostlePix(o,f){
 // fabryka sprite'ów wroga
 function enemySprite(d){
   const gens={beast:beastPix,skeleton:skeletonPix,ghost:ghostPix,drowned:drownedPix,
-    possessed:possessedPix,swarm:swarmPix,snake:snakePix,apostle:apostlePix};
+    possessed:possessedPix,swarm:swarmPix,snake:snakePix,apostle:apostlePix,
+    spider:spiderPix,crab:crabPix,bats:batsPix};
   let frames;
   if(d.gen==='human'){
     const bs=[battlePix(d.look,'idle',0).mirrored(),battlePix(d.look,'idle',1).mirrored()];
@@ -1133,6 +1157,25 @@ function makeBgs(){
   interior('fort',0x2e2a27,false,false);
   interior('cathedral',0x2b2724,true,false);
   interior('castle',0x3a2f2d,false,true);
+  interior('mine',0x35291c,false,false);
+  mk('coast',(g,r)=>{skyGrad(g,0x252428,0x4a443e,84);
+    // morze do horyzontu
+    for(let y=84;y<108;y++){g.fillStyle=hex(lerpC(0x2a3a44,0x16222e,(y-84)/24));g.fillRect(0,y,W,1);}
+    for(let i=0;i<40;i++){g.fillStyle='rgba(120,150,165,'+r.range(.1,.3)+')';g.fillRect(r.i(0,W),r.i(86,106),r.i(2,6),1);} // grzywy fal
+    // sylwetka wraku na horyzoncie
+    g.fillStyle=hex(0x14120e);g.fillRect(330,62,40,24);g.fillRect(346,40,3,24);
+    g.fillRect(338,46,14,1);g.fillRect(322,80,56,6);
+    ground(g,r,0x8a7a54,108); // plaża
+    for(let i=0;i<8;i++){const x=r.i(10,W-20);g.fillStyle=hex(0x5f594d);g.fillRect(x,r.i(120,BGH-10),r.i(3,8),2);} // kamienie i szczątki
+  });
+  mk('battlefield',(g,r)=>{skyGrad(g,0x232026,0x453a32,98);
+    silhouette(g,r,0x1b181d,80,7,30,false);
+    ground(g,r,0x3a342a,106);
+    for(let i=0;i<9;i++){const x=r.i(15,W-15),y=r.i(112,BGH-12); // pale, włócznie, kości pól śmierci
+      g.fillStyle=hex(0x2a2118);g.fillRect(x,y-r.i(10,20),2,r.i(12,22));
+      if(r.chance(.5)){g.fillStyle=hex(0x3a2c20);g.fillRect(x-3,y-r.i(6,14),8,1);}
+      if(r.chance(.4)){g.fillStyle=hex(0x8a8276);g.fillRect(x+r.i(-8,8),y,r.i(2,5),1);}}
+  });
 }
 
 //================ DANE: BOHATEROWIE ================
@@ -1455,7 +1498,7 @@ function bumpCounter(k,n=1){G.counters[k]=(G.counters[k]||0)+n;return G.counters
 
 //================ ŚWIAT: ŁADOWANIE MAP ================
 const SOLIDCH=new Set(['~','s','M','l','_','#','T','t','P','R','G','F']);
-const WALKF=new Set(['.',',',';','=',':','S','a','f','b','w','c','d']);
+const WALKF=new Set(['.',',',';','=',':','S','a','f','b','w','c','d','k','q']);
 let MC=null; // cache bieżącej mapy
 
 function buildMap(m){
@@ -1477,6 +1520,7 @@ function buildMap(m){
         case'~':t=T.water[f];break;case'S':case's':t=T.swamp[f];break;
         case'M':t=T.mtn;break;case'a':t=T.ash;break;case'l':t=T.lava[f];break;
         case'b':t=T.bridge;break;case'w':t=T.floor_wood;break;case'c':t=T.carpet;break;
+        case'k':t=T.bruk[(x*3+y*5)%2];break;case'q':t=T.piasek[(x*7+y*11)%3];break;
         case'd':t=T.stairs;break;case'_':t=T.void;break;
         case'f':t=T[m.floor||'floor_crypt'][(x+y)%2];break;
         case'#':{const below=y+1<mh?grid[y+1][x]:'#';const ws=T[m.wall||'wall_crypt'];
@@ -1500,8 +1544,11 @@ function buildMap(m){
   for(const od of(m.objects||[])){
     const o=Object.assign({},od);
     if(o.type==='house'){
-      o.art=IMG.props.house(o.seed||1,o.tw,o.roof||0x5e3a2e);
-      for(let i=0;i<o.tw;i++){solid[(o.y)*mw+o.x+i]=1;solid[(o.y-1)*mw+o.x+i]=1;}
+      if(o.kind==='church'){o.tw=6;o.art=IMG.props.church(o.seed||1);}
+      else if(o.kind==='m2')o.art=IMG.props.house2(o.seed||1,o.tw,o.style||'dom');
+      else o.art=IMG.props.house(o.seed||1,o.tw,o.roof||0x5e3a2e);
+      const rows=o.kind==='church'?3:2;
+      for(let i=0;i<o.tw;i++)for(let rr=0;rr<rows;rr++)solid[(o.y-rr)*mw+o.x+i]=1;
       o.doorX=o.x+(o.tw>>1);
     }
     if(o.type==='prop'){const pr=IMG.props[o.p];if(pr.solid!==false&&!o.nosolid)solid[o.y*mw+o.x]=1;}
@@ -1526,12 +1573,34 @@ function isSolid(x,y){
   }
   return false;
 }
+function rollWeather(){
+  const m=MAPS[G.mapId];
+  if(!m||!m.outdoor){G.weather='clear';return;}
+  const b=m.wBias||{};
+  const pr=b.rain!==undefined?b.rain:.26,pf=b.fog!==undefined?b.fog:.16;
+  const r=Math.random();
+  G.weather=r<pr?'rain':(r<pr+pf?'fog':'clear');
+}
+let fogCv=null;
+function getFog(){
+  if(fogCv)return fogCv;
+  fogCv=document.createElement('canvas');fogCv.width=320;fogCv.height=200;
+  const g=fogCv.getContext('2d'),r=RNG(99);
+  for(let i=0;i<26;i++){
+    const x=r.f()*320,y=r.f()*200,rad=30+r.f()*55;
+    const gr=g.createRadialGradient(x,y,2,x,y,rad);
+    gr.addColorStop(0,'rgba(190,195,205,.5)');gr.addColorStop(1,'rgba(190,195,205,0)');
+    g.fillStyle=gr;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+  }
+  return fogCv;
+}
 function loadMap(id,tx,ty,dir){
   const m=MAPS[id];G.mapId=id;G.px=tx;G.py=ty;if(dir)G.dir=dir;
   MC=buildMap(m);
   Field.pl={fx:tx,fy:ty,moving:false,mt:0,step:0,sinceEnc:0};
   Field.banner={t:3,text:m.name};
-  Field.ash=[];
+  Field.ash=[];Field.rain=[];
+  rollWeather();
   AudioSys.music(m.music||'world');
 }
 
@@ -1546,12 +1615,12 @@ const toasts=[];
 function pushToast(text,icon){toasts.push({text,icon,t:3});}
 
 const Field={
-  pl:null,banner:null,ash:[],
+  pl:null,banner:null,ash:[],rain:[],
   enter(){},
   update(dt){
     const m=MC.m,p=this.pl;
     G.playtime+=dt;
-    if(m.outdoor)G.dayT=(G.dayT+dt/300)%1;
+    if(m.outdoor){const prev=G.dayT;G.dayT=(G.dayT+dt/300)%1;if(G.dayT<prev)rollWeather();} // świt = nowa pogoda
     // ruch gracza
     if(p.moving){
       p.mt+=dt*6.5;
@@ -1593,6 +1662,11 @@ const Field={
       if(this.ash.length<46)this.ash.push({x:Math.random()*W,y:-4,vx:-4-Math.random()*8,vy:9+Math.random()*14,a:.2+Math.random()*.4});
       for(const f of this.ash){f.x+=f.vx*dt;f.y+=f.vy*dt;}
       this.ash=this.ash.filter(f=>f.y<H+6&&f.x>-6);
+      // deszcz
+      if(G.weather==='rain'){
+        while(this.rain.length<90)this.rain.push({x:Math.random()*(W+80)-20,y:Math.random()*H-H,spd:240+Math.random()*140,len:5+Math.random()*5});
+        for(const d of this.rain){d.y+=d.spd*dt;d.x-=d.spd*dt*0.22;if(d.y>H+8){d.y=-10;d.x=Math.random()*(W+80)-20;}}
+      } else this.rain.length=0;
     }
     for(const t of toasts)t.t-=dt;
     while(toasts.length&&toasts[0].t<=0)toasts.shift();
@@ -1632,7 +1706,8 @@ const Field={
       this.pl.sinceEnc++;
       const night=m.outdoor&&isNight();
       const pool=night?(enc.night||enc.day):enc.day;
-      const rate=enc.rate*(night?(1.4+G.dread/45):1);
+      let rate=enc.rate*(night?(1.4+G.dread/45):1);
+      if(G.weather==='fog'&&m.outdoor)rate*=1.35; // we mgle łatwiej o zasadzkę
       if(this.pl.sinceEnc>3&&rnd.chance(rate)){
         this.pl.sinceEnc=0;
         AudioSys.sfx('encounter');flash('#1a1018',1.2);shake(4);
@@ -1732,11 +1807,12 @@ const Field={
       ctx.globalCompositeOperation='source-over';
       const dk=document.createElement?null:null;
       // światło gracza + pochodnie przez 'lighter' nie zadziała na czerni — użyj gradientu odejmowanego
-      const grd=ctx.createRadialGradient(p.fx*16+8-cx,p.fy*16+8-cy,18,p.fx*16+8-cx,p.fy*16+8-cy,86);
+      const lampR=G.party.some(h=>h.equip.acc==='lampa')?134:86; // lampa górnicza poszerza krąg
+      const grd=ctx.createRadialGradient(p.fx*16+8-cx,p.fy*16+8-cy,18,p.fx*16+8-cx,p.fy*16+8-cy,lampR);
       grd.addColorStop(0,'rgba(4,3,6,0)');grd.addColorStop(1,'rgba(4,3,6,.85)');
       ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
       for(const o of MC.objs){
-        if(o.type==='prop'&&(o.p==='torch'||o.p==='fire')){
+        if(o.type==='prop'&&(o.p==='torch'||o.p==='fire'||o.p==='lamp')){
           const tx=o.x*16+8-cx,ty=o.y*16+8-cy;
           if(tx<-40||tx>W+40||ty<-40||ty>H+40)continue;
           const g2=ctx.createRadialGradient(tx,ty,4,tx,ty,40);
@@ -1754,14 +1830,20 @@ const Field={
         ctx.save();ctx.globalCompositeOperation='multiply';
         ctx.fillStyle='rgba('+Math.round(lerp(255,68,nt))+','+Math.round(lerp(255,76,nt))+','+Math.round(lerp(255,120,nt))+',1)';
         ctx.fillRect(0,0,W,H);ctx.restore();
-        // ogniska świecą nocą
+        // ogniska i latarnie świecą nocą
         ctx.save();ctx.globalCompositeOperation='lighter';
+        const glowAt=(tx,ty,rad,a)=>{
+          const g2=ctx.createRadialGradient(tx,ty,4,tx,ty,rad);
+          g2.addColorStop(0,'rgba(232,144,48,'+(a*nt)+')');g2.addColorStop(1,'rgba(232,144,48,0)');
+          ctx.fillStyle=g2;ctx.fillRect(tx-rad,ty-rad,rad*2,rad*2);
+        };
         for(let y=Math.max(0,y0);y<Math.min(MC.mh,y1);y++)for(let x=Math.max(0,x0);x<Math.min(MC.mw,x1);x++){
-          if(MC.grid[y][x]==='F'){
-            const tx=x*16+8-cx,ty=y*16+8-cy;
-            const g2=ctx.createRadialGradient(tx,ty,4,tx,ty,44);
-            g2.addColorStop(0,'rgba(232,144,48,'+(.3*nt)+')');g2.addColorStop(1,'rgba(232,144,48,0)');
-            ctx.fillStyle=g2;ctx.fillRect(tx-44,ty-44,88,88);
+          if(MC.grid[y][x]==='F')glowAt(x*16+8-cx,y*16+8-cy,44,.3);
+        }
+        for(const o of MC.objs){
+          if(o.type==='prop'&&(o.p==='lamp'||o.p==='fire')){
+            const tx=o.x*16+8-cx,ty=o.y*16-2-cy;
+            if(tx>-50&&tx<W+50&&ty>-50&&ty<H+50)glowAt(tx,ty,38,.26);
           }
         }
         ctx.restore();
@@ -1769,6 +1851,24 @@ const Field={
       // popiół
       ctx.fillStyle='rgba(180,175,165,.5)';
       for(const f of this.ash)ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);
+      // deszcz
+      if(G.weather==='rain'&&this.rain.length){
+        ctx.strokeStyle='rgba(168,184,205,.34)';ctx.lineWidth=1;ctx.beginPath();
+        for(const d of this.rain){ctx.moveTo(d.x,d.y);ctx.lineTo(d.x-d.len*0.25,d.y+d.len);}
+        ctx.stroke();
+        ctx.fillStyle='rgba(40,55,80,.13)';ctx.fillRect(0,0,W,H);
+      }
+      // mgła
+      if(G.weather==='fog'){
+        const fc=getFog();
+        ctx.save();
+        const o1=Math.floor((gTime*9)%320),o2=Math.floor((gTime*5)%320);
+        ctx.globalAlpha=.2;
+        for(let x=-320;x<W+320;x+=320){ctx.drawImage(fc,x+o1,Math.round(Math.sin(gTime*.3)*10)-10);ctx.drawImage(fc,x+o1-160,120);}
+        ctx.globalAlpha=.13;
+        for(let x=-320;x<W+320;x+=320){ctx.drawImage(fc,x-o2,60);ctx.drawImage(fc,x-o2+90,-30);}
+        ctx.restore();
+      }
     }
     // HUD
     if(this.banner&&this.banner.t>0){
@@ -2180,9 +2280,10 @@ const MAPS={
     ]},
   przelecz:{name:'Przełęcz Kruków',music:'world',outdoor:true,pad:'M',enc:'przelecz',encTiles:['a'],
     grid:genWild({seed:4003,w:40,h:20,base:'a',alt:'a',dense:['M','M','R'],border:'M',path:'=',encCh:'a',blobs:24,encBlobs:0,
-      paths:[[[1,10],[38,9]],[[12,9],[12,5]]],
+      paths:[[[1,10],[38,9]],[[12,9],[12,5]],[[24,9],[24,1]]],
       force:[[0,10,'='],[0,11,'='],[1,10,'='],[1,11,'='],[39,8,'='],[39,9,'='],[38,8,'='],[38,9,'='],
         [11,2,'M'],[12,2,'M'],[13,2,'M'],[11,3,'M'],[13,3,'M'],[11,4,'M'],[13,4,'M'],[12,3,'a'],[12,4,'a'],[12,5,'a'],
+        [24,0,'='],[25,0,'='],[24,1,'='],[25,1,'='],
         [21,12,'.'],[22,12,'F'],[23,12,'.'],[22,13,'.'],[23,13,'.'],[21,13,'.']]}),
     objects:[
       {type:'trig',x:12,y:4,id:'bear',script:'t_bear',once:true},
@@ -2194,6 +2295,8 @@ const MAPS={
       {type:'exit',x:0,y:11,to:'las',tx:40,ty:11,dir:'left'},
       {type:'exit',x:39,y:8,to:'zamek',tx:17,ty:22,dir:'up'},
       {type:'exit',x:39,y:9,to:'zamek',tx:17,ty:22,dir:'up'},
+      {type:'exit',x:24,y:0,to:'pobojowisko',tx:21,ty:24,dir:'up'},
+      {type:'exit',x:25,y:0,to:'pobojowisko',tx:21,ty:24,dir:'up'},
     ]},
   zamek:{name:'Zamek Vorlec',music:'castle',pad:'#',enc:'zamek',encTiles:['f'],floor:'floor_castle',wall:'wall_castle',
     grid:genCastle(),objects:[
@@ -2242,7 +2345,7 @@ const QUESTS={
 //================ ZAPIS / ODCZYT ================
 function saveGame(slot){
   const d={v:1,party:G.party.map(h=>({id:h.id,level:h.level,xp:h.xp,hp:h.hp,sp:h.sp,equip:h.equip})),
-    inv:G.inv,gold:G.gold,flags:G.flags,bestiary:G.bestiary,quests:G.quests,counters:G.counters,dread:G.dread,
+    inv:G.inv,gold:G.gold,flags:G.flags,bestiary:G.bestiary,quests:G.quests,counters:G.counters,dread:G.dread,weather:G.weather,
     mapId:G.mapId,px:G.px,py:G.py,dir:G.dir,dayT:G.dayT,playtime:G.playtime,chapter:G.chapter,
     stamp:new Date().toLocaleString('pl-PL')};
   try{localStorage.setItem(SAVE_KEY+slot,JSON.stringify(d));return true;}catch(e){return false;}
@@ -2257,6 +2360,7 @@ function loadGame(slot){
   G.counters=d.counters||{};G.dread=d.dread||0;
   G.dayT=d.dayT;G.playtime=d.playtime;G.chapter=d.chapter||'';
   setScene(Field);loadMap(d.mapId,d.px,d.py,d.dir);
+  if(d.weather)G.weather=d.weather;
   return true;
 }
 const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'g '+(m<10?'0':'')+m+'m';};
@@ -2560,10 +2664,16 @@ class MenuScene{
           ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(dx,cy,150,64);
           ctx.drawImage(spr.frames[Math.floor(gTime*2)%2],dx+75-spr.w*sc/2,cy+32-spr.h*sc/2,spr.w*sc,spr.h*sc);
         }
+        const kills=(G.counters.kills&&G.counters.kills[id])||0;
         txt('ŻYW '+e.hp+'  ATK '+e.atk+'  OBR '+e.def,dx,cy+70,'#b8ad98',7);
+        txt('Ubito: '+kills,dx+150,cy+70,kills>0?'#c9a35a':'#5e5648',7);
         const ws=Object.entries(e.res||{}).filter(([k,v])=>v>1).map(([k])=>({slash:'cięte',pierce:'kłute',blunt:'obuch',fire:'ogień',dark:'mrok'}[k]));
         if(ws.length)txt('Słabość: '+ws.join(', '),dx,cy+81,'#8ad07a',7);
-        wrapTxt(e.desc,dx,cy+94,200,'#9a8f7c',7,10);
+        let ly2=wrapTxt(e.desc,dx,cy+94,200,'#9a8f7c',7,10);
+        if(e.desc2){
+          if(kills>=5)wrapTxt(e.desc2,dx,ly2+14,200,'#c9a35a',7,10);
+          else txt('☠ Ubij 5, by kronikarz dopisał resztę.',dx,ly2+14,'#5e5648',7);
+        }
       }
     }
     else if(t==='Dziennik'){
@@ -3013,6 +3123,9 @@ class BattleScene{
       xp+=f.d.xp;gold+=f.d.gold;
       for(const it in(f.d.drops||{}))if(rnd.chance(f.d.drops[it]))drops.push(it);
     }
+    // kroniki łowów
+    G.counters.kills=G.counters.kills||{};
+    for(const f of this.foes)G.counters.kills[f.id]=(G.counters.kills[f.id]||0)+1;
     // pieśni o czynach
     unlockAchv('pierwsza_krew');
     const ids=this.foes.map(f=>f.id);
@@ -3555,12 +3668,760 @@ function newGame(){
 function makeEnemies(){for(const id in ENEMIES)IMG.enemies[id]=enemySprite(ENEMIES[id].spr);}
 function init(){
   AudioSys.defTracks();
-  makeTiles();makeProps();makeIcons();
+  makeTiles();makeProps();makeProps2();makeIcons();
   makeHeroes();makeNpcs();makeEnemies();makeBgs();
   setScene(TitleScene);
   requestAnimationFrame(t=>{lastT=t;requestAnimationFrame(loop);});
 }
 init();
+
+//================ PIEŚŃ DRUGA: ARCHITEKTURA MEDIEVAL ================
+function makeProps2(){
+  const P=IMG.props;
+  // okno lancetowe z witrażem (ostrołuk + maswerk + laska)
+  const lancet=(p,x0,y0,w,h,r)=>{
+    const glass=[0x2e4a74,0x5a3068,0x74561e,0x2e6448,0x6e2a32];
+    for(let y=0;y<h;y++){
+      const taper=y<w?Math.ceil((w-y)/2-0.001):0; // ostrołuk u góry
+      const ins=y<Math.ceil(w/2)?taper:0;
+      for(let x=ins;x<w-ins;x++){
+        p.set(x0+x,y0+y,(y%5===4||x===(w>>1))?0x232020:(r.chance(.35)?r.pick(glass):0x10141c));
+      }
+    }
+    // obramienie kamienne
+    for(let y=-1;y<=h;y++){p.set(x0-1,y0+y,0x57503f);p.set(x0+w,y0+y,0x4a4436);}
+  };
+  // --- KOŚCIÓŁ GOTYCKI (~100×108) ---
+  P.church=(seed)=>{
+    const r=RNG(seed),p=new Pix(100,108);
+    const stone=0x6e685a,stone2=0x77705f,slate=0x3c3c46;
+    // — wieża (lewa) —
+    p.frect(8,28,24,76,stone);
+    for(let i=0;i<70;i++)p.set(r.i(8,31),r.i(28,102),r.chance(.5)?dim(stone,.08):lit(stone,.06));
+    for(let y=30;y<104;y+=6)p.frect(8,y,24,1,dim(stone,.14)); // warstwy kamienia
+    p.frect(8,28,2,76,lit(stone,.12));p.frect(30,28,2,76,dim(stone,.18)); // naroża
+    // iglica
+    for(let y=0;y<22;y++){const w2=Math.round(2+(y/22)*11);
+      p.frect(20-w2,6+y,w2*2,1,y%3===0?dim(slate,.2):slate);p.set(20-w2,6+y,lit(slate,.22));}
+    p.frect(6,26,28,3,lit(stone,.16));p.frect(6,26,28,1,lit(stone,.3)); // gzyms pod iglicą
+    // krzyż
+    p.frect(19,0,2,7,0x8a7142);p.frect(16,2,8,2,0x8a7142);p.set(19,0,0xc9a35a);
+    // biforium (podwójne okienko dzwonnicy)
+    lancet(p,12,36,6,16,r);lancet(p,22,36,6,16,r);
+    p.frect(11,54,18,2,dim(stone,.2));
+    // okrągłe okienko wieży
+    p.ellipse(20,64,3.4,3.4,0x4a4436);p.ellipse(20,64,2.2,2.2,0x10141c);
+    p.set(19,63,0x2e4a74);p.set(21,65,0x5a3068);
+    // — korpus nawy (prawa) —
+    // dach łupkowy ze szczytem
+    for(let y=0;y<16;y++){p.frect(34,42+y,62,1,y%3===0?dim(slate,.18):(y%3===1?slate:lit(slate,.05)));}
+    p.frect(33,41,64,2,lit(slate,.24)); // kalenica
+    // ściana nawy
+    p.frect(34,58,62,44,stone2);
+    for(let i=0;i<110;i++)p.set(r.i(34,95),r.i(58,100),r.chance(.5)?dim(stone2,.07):lit(stone2,.05));
+    for(let y=62;y<102;y+=6)p.frect(34,y,62,1,dim(stone2,.12));
+    // — ryzalit centralny z portalem i rozetą —
+    p.frect(54,42,26,60,lit(stone2,.06));
+    for(let y=0;y<12;y++){const w2=Math.round(13-(y/12)*13);
+      p.frect(67-(13-w2),30+y,(13-w2)*2,1,y%3?slate:dim(slate,.18));} // trójkątny szczyt
+    p.frect(53,41,28,1,lit(slate,.25));
+    p.set(67,27,0x8a7142);p.frect(66,28,3,2,0x8a7142); // krzyżyk na szczycie
+    // rozeta
+    p.ellipse(67,52,6.4,6.4,0x57503f);
+    p.ellipse(67,52,5,5,0x10141c);
+    for(let a=0;a<8;a++){const ang=a*Math.PI/4;
+      p.set(Math.round(67+Math.cos(ang)*3),Math.round(52+Math.sin(ang)*3),[0x2e4a74,0x5a3068,0x74561e,0x6e2a32][a%4]);}
+    p.set(67,52,0xc9a35a);
+    // portal ostrołukowy z archiwoltą
+    for(let y=0;y<6;y++){const ins=Math.ceil((6-y)/2);
+      p.frect(60+ins,66+y,14-ins*2,1,0x1a120a);
+      p.set(59+ins,66+y,0x57503f);p.set(74-ins,66+y,0x57503f);}
+    p.frect(60,72,14,28,0x1a120a);
+    p.frect(58,72,2,28,0x57503f);p.frect(74,72,2,28,0x57503f); // ościeża
+    p.frect(62,74,4,26,0x2a1c10);p.frect(68,74,4,26,0x241808); // skrzydła drzwi
+    p.set(66,86,0xc9a35a);p.set(68,86,0xc9a35a); // okucia
+    // schody
+    p.frect(56,100,22,2,lit(stone2,.18));p.frect(54,102,26,2,lit(stone2,.1));p.frect(52,104,30,2,dim(stone2,.05));
+    // okna lancetowe nawy
+    lancet(p,40,64,7,26,r);lancet(p,86,64,7,26,r);
+    // przypory
+    for(const bx of[34,50,80,93]){
+      p.frect(bx,56,3,46,lit(stone2,.14));
+      p.frect(bx,56,1,46,lit(stone2,.26));
+      p.frect(bx,70,3,2,dim(stone2,.2));p.frect(bx,86,3,2,dim(stone2,.2)); // uskoki
+    }
+    // fundament
+    p.frect(8,102,88,4,dim(stone,.22));
+    for(let i=0;i<20;i++)p.set(r.i(8,95),r.i(102,105),dim(stone,.3));
+    p.noise(r,.05,.12);p.outline();
+    return propFromPix(p);
+  };
+  // --- DOM Z MURU PRUSKIEGO ---
+  P.house2=(seed,tw,style='dom')=>{
+    const r=RNG(seed),wpx=tw*16,p=new Pix(wpx+6,52);
+    const ox=3; // okap wystaje poza ściany
+    const plaster=r.pick([0x9c8c70,0xa3937a,0x8d8472,0x96866a]);
+    const beam=0x32261a,roofC=r.pick([0x4a4440,0x553f33,0x474039]);
+    const wallY=16,wallH=30;
+    // ściana — tynk
+    p.frect(ox,wallY,wpx,wallH,plaster);
+    for(let i=0;i<wpx*1.4;i++)p.set(ox+r.i(0,wpx-1),wallY+r.i(0,wallH-1),r.chance(.5)?dim(plaster,.05):lit(plaster,.05));
+    // kamienna podmurówka
+    p.frect(ox,wallY+wallH-6,wpx,6,0x5f594d);
+    for(let i=0;i<tw*6;i++)p.set(ox+r.i(0,wpx-1),wallY+wallH-6+r.i(0,5),r.chance(.5)?0x554f43:0x6a6457);
+    p.frect(ox,wallY+wallH-6,wpx,1,dim(0x5f594d,.2));
+    // mur pruski: rygle poziome
+    p.frect(ox,wallY,wpx,2,beam);
+    p.frect(ox,wallY+12,wpx,2,beam);
+    p.frect(ox,wallY+22,wpx,2,beam);
+    // słupy i zastrzały
+    for(let bx=0;bx<=wpx-2;bx+=8){
+      p.frect(ox+bx,wallY,2,wallH-6,beam);
+      if((bx/8)%2===0&&bx+8<=wpx-2){ // zastrzał ukośny w polu
+        p.line(ox+bx+2,wallY+11,ox+bx+7,wallY+3,dim(beam,.05));
+        p.line(ox+bx+2,wallY+14,ox+bx+7,wallY+21,dim(beam,.05));
+      }
+    }
+    p.frect(ox,wallY,2,wallH,beam);p.frect(ox+wpx-2,wallY,2,wallH,beam);
+    // drzwi (łuk + klepki)
+    const dx=ox+(wpx>>1)-5;
+    p.frect(dx,wallY+14,10,16,0x57503f);
+    p.frect(dx+1,wallY+15,8,15,0x241808);
+    p.frect(dx+3,wallY+15,1,15,0x1a1206);p.frect(dx+6,wallY+15,1,15,0x1a1206);
+    p.set(dx+2,wallY+14,0x57503f);p.set(dx+7,wallY+14,0x57503f); // łuk
+    p.set(dx+7,wallY+22,0xc9a35a); // klamka
+    // okna z okiennicami
+    const shutter=r.pick([0x5e3a2e,0x3a4a5e,0x4a5a32]);
+    [ox+4,ox+wpx-12].forEach(wx=>{
+      if(Math.abs(wx-dx)>9){
+        p.frect(wx,wallY+4,6,7,0x10141c);
+        p.set(wx+1,wallY+5,0x4a5a74);p.set(wx+4,wallY+8,0x74561e);
+        p.frect(wx+2,wallY+4,1,7,beam);p.frect(wx,wallY+7,6,1,beam);
+        p.frect(wx-2,wallY+4,2,7,shutter);p.frect(wx+6,wallY+4,2,7,shutter);
+        p.frect(wx-2,wallY+4,2,1,lit(shutter,.2));p.frect(wx+6,wallY+4,2,1,lit(shutter,.2));
+      }
+    });
+    // dach z okapem
+    for(let y=0;y<14;y++){const ins=Math.max(0,Math.floor((13-y)*0.5));
+      p.frect(ins,y+3,wpx+6-ins*2,1,y%3===0?dim(roofC,.16):(y%3===1?roofC:lit(roofC,.06)));}
+    p.frect(0,16,wpx+6,2,dim(roofC,.25)); // cień okapu
+    p.frect(Math.floor((wpx+6)*0.5)-1,2,3,1,lit(roofC,.2)); // kalenica błysk
+    // komin
+    p.frect(ox+wpx-10,0,5,8,0x5f594d);p.frect(ox+wpx-11,0,7,2,0x6a6457);
+    // styl: szyld karczmy / markiza kramu
+    if(style==='karczma'){
+      p.frect(dx-8,wallY+2,8,1,beam); // wysięgnik
+      p.frect(dx-9,wallY+3,6,7,0x57503f);
+      p.frect(dx-8,wallY+4,4,5,0x6e5430);
+      p.set(dx-7,wallY+5,0xc9a35a);p.set(dx-6,wallY+6,0xe8c870); // kufel
+    }
+    if(style==='kram'){
+      for(let i=0;i<wpx-8;i++)p.frect(ox+4+i,wallY+1,1,3,(i>>2)%2?0x6e3a32:0xb0a890); // markiza w pasy
+      p.frect(ox+3,wallY+4,wpx-6,1,dim(0x6e3a32,.2));
+    }
+    p.noise(r,.04,.1);p.outline();
+    return propFromPix(p);
+  };
+  // --- detale osady i pobojowiska ---
+  {const p=new Pix(10,12),r=RNG(3001),wd=0x6e5430; // beczka
+    p.frect(2,2,6,9,wd);p.frect(1,4,8,5,wd);
+    p.frect(1,4,8,1,0x4a4436);p.frect(1,8,8,1,0x4a4436);
+    p.frect(2,2,1,9,lit(wd,.15));p.frect(7,2,1,9,dim(wd,.18));
+    p.noise(r,.1,.25);p.shade(.6);p.outline();P.barrel=propFromPix(p);}
+  {const p=new Pix(28,18),r=RNG(3002),wd=0x4a3823; // rozbity wóz
+    p.frect(4,6,20,5,wd);for(let i=0;i<5;i++)p.frect(5+i*4,6,1,5,dim(wd,.2));
+    p.line(24,8,28,4,dim(wd,.1)); // dyszel zadarty
+    p.ellipse(8,13,3.4,3.4,0x3a2c1c);p.ellipse(8,13,1.4,1.4,wd); // koło
+    p.line(20,11,23,16,dim(wd,.25));p.ellipse(22,15,2.4,2.4,0x3a2c1c); // koło urwane
+    p.noise(r,.14,.3);p.shade(.7);p.outline();P.cart=propFromPix(p);}
+  for(let v=0;v<3;v++){ // pal ze strzępem sztandaru
+    const p=new Pix(14,26),r=RNG(3010+v);
+    const cl=[0x5e262a,0x2e3a5e,0x4a5a32][v];
+    p.frect(6,4,2,21,0x4a3823);p.set(6,3,0x6e5430);
+    for(let y=0;y<9;y++){const w2=8-Math.floor(y*0.5)-(r.chance(.4)?r.i(0,2):0);
+      if(w2>0)p.frect(8,5+y,w2,1,y%3?cl:dim(cl,.15));}
+    p.set(8+r.i(2,5),14,cl); // strzęp
+    p.noise(r,.12,.3);p.shade(.6);p.outline();P['banner'+v]=propFromPix(p);}
+  {const p=new Pix(14,9),r=RNG(3015),cl=0x4e3036; // sztandar leżący (pickup)
+    for(let i=0;i<14;i++)p.frect(r.i(0,10),r.i(2,6),r.i(2,4),1,r.chance(.6)?cl:dim(cl,.2));
+    p.line(1,7,12,6,0x4a3823);p.outline();P.sztandar=propFromPix(p,false);}
+  {const p=new Pix(12,18),r=RNG(3020),wd=0x5a4630; // krzyż przydrożny
+    p.frect(5,2,2,15,wd);p.frect(2,5,8,2,wd);
+    p.frect(5,2,1,15,lit(wd,.12));p.set(5,17,dim(wd,.2));
+    p.noise(r,.1,.2);p.shade(.6);p.outline();P.cross=propFromPix(p);}
+  {const p=new Pix(28,32),r=RNG(3025),wd=0x4a3823; // szubienica
+    p.frect(2,26,24,4,dim(wd,.15)); // podest
+    p.frect(5,6,3,21,wd);p.frect(5,6,16,2,wd); // słup i belka
+    p.line(8,8,5,14,dim(wd,.1)); // zastrzał
+    p.frect(17,8,1,6,0x8a8276);p.ellipse(17,15,1.6,2,0x8a8276);p.set(17,15,0x10141c); // pusta pętla
+    p.noise(r,.13,.3);p.shade(.7);p.outline();P.gallows=propFromPix(p);}
+  {const p=new Pix(10,24),r=RNG(3030); // latarnia uliczna
+    const mt=0x2e2a30;
+    p.frect(4,6,2,17,mt);p.frect(2,22,6,2,dim(mt,.1));
+    p.frect(3,2,4,5,mt);p.frect(4,3,2,3,0xe8a040);p.set(4,3,0xf4c878);
+    p.set(2,1,mt);p.set(7,1,mt);p.frect(3,1,4,1,lit(mt,.2));
+    p.shade(.6);p.outline();P.lamp=propFromPix(p);}
+  {const p=new Pix(26,12),r=RNG(3035),wd=0x4f3c28; // łódź na piachu
+    for(let x=0;x<24;x++){const dep=Math.round(3+Math.sin(x/23*Math.PI)*4);
+      p.frect(1+x,9-dep,1,dep,x%5===0?dim(wd,.18):wd);}
+    p.frect(1,9,24,1,dim(wd,.25));
+    p.frect(4,4,18,1,lit(wd,.15)); // burta
+    p.line(18,2,22,8,0x6e5430); // wiosło
+    p.noise(r,.12,.3);p.shade(.6);p.outline();P.boat=propFromPix(p);}
+  {const p=new Pix(88,46),r=RNG(3040),wd=0x453426; // WIELKI WRAK
+    // kadłub przechylony
+    for(let x=0;x<80;x++){
+      const prof=Math.round(10+Math.sin(x/79*Math.PI)*16); // wysokość burty
+      const yb=42-Math.round(x*0.06); // przechył
+      p.frect(4+x,yb-prof,1,prof,x%6===0?dim(wd,.2):(x%6===3?lit(wd,.06):wd));
+    }
+    // wyrwa w burcie — odsłonięte żebra
+    for(let y=26;y<40;y++)for(let x=30;x<52;x++)p.d[y*88+x]=-1;
+    for(let i=0;i<5;i++){p.frect(31+i*4,24,2,16,dim(wd,.28));}
+    p.frect(28,22,26,2,dim(wd,.15)); // krawędź wyrwy
+    // pokład / reling
+    p.frect(6,18,68,2,lit(wd,.12));
+    for(let x=8;x<70;x+=6)p.set(x,16,dim(wd,.1));
+    // złamany maszt z reją i strzępem żagla
+    p.frect(40,2,3,18,0x3a2c1c);p.line(43,4,52,1,0x3a2c1c);
+    p.frect(30,5,12,1,0x3a2c1c);
+    for(let y=0;y<7;y++){const w2=9-y-(r.chance(.5)?1:0);if(w2>0)p.frect(31,6+y,w2,1,y%2?0x8d8270:0x9a8f7c);}
+    // dziób zadarty
+    p.line(83,12,87,4,wd);p.line(84,16,88,8,dim(wd,.1));
+    p.noise(r,.14,.35);p.shade(.8);p.outline();P.wreck=propFromPix(p);}
+  {const p=new Pix(18,14),r=RNG(3050),wd=0x4a3823; // sieci na palach
+    p.frect(2,2,2,11,wd);p.frect(14,2,2,11,wd);
+    for(let x=4;x<14;x+=2)p.line(x,3,x+1,11,0x6e6457);
+    for(let y=4;y<11;y+=2)p.line(4,y,13,y+1,0x6e6457);
+    p.noise(r,.1,.2);p.outline();P.net=propFromPix(p);}
+  // --- kopalnie ---
+  {const p=new Pix(20,24),r=RNG(3060),wd=0x4a3520; // stempel górniczy (rama)
+    p.frect(2,4,3,20,wd);p.frect(15,4,3,20,wd);
+    p.frect(1,2,18,3,lit(wd,.08));
+    p.line(4,8,8,4,dim(wd,.1));p.line(15,8,11,4,dim(wd,.1)); // zastrzały
+    p.noise(r,.14,.3);p.shade(.6);p.outline();P.support=propFromPix(p,false);}
+  {const p=new Pix(20,12),r=RNG(3065); // hałda urobku
+    p.ellipse(10,8,9,4,0x3e362c);p.ellipse(8,6,5,3,0x474035);
+    for(let i=0;i<16;i++)p.set(r.i(2,17),r.i(4,10),r.pick([0x352e25,0x4f463a,0x2c2620]));
+    p.shade(.7);p.outline();P.halda=propFromPix(p);}
+  {const p=new Pix(18,15),r=RNG(3070),mt=0x3a3531; // wagonik
+    p.frect(2,3,14,8,mt);p.frect(2,3,14,1,lit(mt,.15));p.frect(3,4,12,2,0x4f463a); // urobek
+    p.set(5,4,0x6a6457);p.set(9,4,0x5a5248);
+    p.ellipse(5,12,2,2,0x23201d);p.ellipse(12,12,2,2,0x23201d);
+    p.noise(r,.1,.25);p.shade(.6);p.outline();P.wagon=propFromPix(p);}
+  {const p=new Pix(14,18),r=RNG(3075); // kokon
+    const c=0xb0aa98;
+    p.ellipse(7,10,5,7,c);p.ellipse(7,9,3.4,5,lit(c,.08));
+    p.line(7,0,7,3,dim(c,.2));p.line(3,4,1,1,dim(c,.25));p.line(11,4,13,2,dim(c,.25)); // nici
+    p.ellipse(7,11,1.6,2.4,dim(c,.35)); // ciemny kształt w środku
+    p.noise(r,.1,.3);p.shade(.7);p.outline();P.kokon=propFromPix(p);}
+}
+
+//================ PIEŚŃ DRUGA: NOWE ARCHETYPY ================
+function spiderPix(o,f){
+  const big=o.big,w=big?52:28,h=big?40:20,p=new Pix(w,h),r=RNG(o.seed+f);
+  const c=o.col||0x3a3026,cx=w>>1,ab=big?15:6,ay=h-(big?15:8);
+  // nogi — 4 pary, kolano w górze
+  for(let i=0;i<4;i++){
+    const kneeY=ay-(big?11:5)-((i%2)?2:0)+((f===1&&i%2)?2:0);
+    const footX=big?(3+i*7):(1+i*3);
+    p.line(cx-2,ay-2,footX,kneeY,c);p.line(footX,kneeY,footX-(big?1:0),h-1,dim(c,.15));
+    p.line(cx+2,ay-2,w-1-footX,kneeY,c);p.line(w-1-footX,kneeY,w-1-footX+(big?1:0),h-1,dim(c,.15));
+  }
+  // odwłok
+  p.ellipse(cx,ay,ab,big?10:5,c);
+  if(big){
+    p.ellipse(cx,ay-3,ab-5,5,lit(c,.08));
+    for(let i=0;i<9;i++)p.set(cx+r.i(-ab+3,ab-3),ay+r.i(-5,7),dim(c,.2)); // znamiona
+    p.line(cx-4,ay-9,cx,ay-5,dim(c,.25));p.line(cx+4,ay-9,cx,ay-5,dim(c,.25)); // krzyżowy wzór
+    p.ellipse(cx+ab-4,ay+6,5,4,0xb0aa98); // worek jaj
+    p.set(cx+ab-5,ay+5,0xd0cabb);p.set(cx+ab-3,ay+7,dim(0xb0aa98,.2));
+  }
+  // głowotułów (przód, w prawo)
+  const hx=cx+ab+(big?3:2),hy=ay+(big?2:1);
+  p.ellipse(hx,hy,big?6:3,big?4.6:2.4,dim(c,.05));
+  p.set(hx+1,hy-1,0xc23a2a);p.set(hx+3,hy-1,0xc23a2a);p.set(hx+2,hy+1,0x8a2018);
+  if(big){p.set(hx,hy-2,0xc23a2a);p.set(hx+4,hy-2,0xe8d050);p.set(hx+2,hy-3,0xc23a2a);}
+  p.set(hx+(big?6:3),hy+2,0xe8e0d0);p.set(hx+(big?7:4),hy+1,0xd8d0c0); // szczękoczułki
+  p.noise(r,.13,.3);p.shade(.8);p.outline();
+  return p;
+}
+function crabPix(o,f){
+  const p=new Pix(26,18),r=RNG(o.seed+f),c=o.col||0x8a4a32;
+  for(let i=0;i<3;i++){
+    p.line(7,10+i*2,2-(f===1&&i%2?1:0),13+i,dim(c,.15));
+    p.line(19,10+i*2,24+(f===1&&i%2?1:0),13+i,dim(c,.15));
+  }
+  p.ellipse(13,10,8,5,c);p.ellipse(13,9,6,3,lit(c,.12));
+  for(let i=0;i<5;i++)p.set(r.i(8,18),r.i(7,12),dim(c,.18));
+  // szczypce
+  p.ellipse(4,7,2.6,2,c);p.set(2,6,dim(c,.25));p.set(2,8,dim(c,.25));
+  p.ellipse(22,7,2.6,2,c);p.set(24,6,dim(c,.25));p.set(24,8,dim(c,.25));
+  if(f===1){p.set(1,7,c);p.set(25,7,c);}
+  // oczy na słupkach
+  p.set(11,4,c);p.set(15,4,c);p.set(11,3,0x14100a);p.set(15,3,0x14100a);
+  p.noise(r,.12,.3);p.shade(.8);p.outline();
+  return p;
+}
+function batsPix(o,f){
+  const p=new Pix(30,24),r=RNG(o.seed),c=o.col||0x2a2228;
+  for(let i=0;i<6;i++){
+    const x=r.i(4,25),y=r.i(3,20),fl=(i+f)%2;
+    p.set(x,y,c);p.set(x,y+1,dim(c,.2));
+    if(fl){p.line(x-1,y-1,x-4,y-3,c);p.line(x+1,y-1,x+4,y-3,c);p.set(x-2,y,dim(c,.12));p.set(x+2,y,dim(c,.12));}
+    else{p.line(x-1,y,x-4,y+1,c);p.line(x+1,y,x+4,y+1,c);}
+    if(i<2)p.set(x,y,0xc23a2a);
+  }
+  p.outline(0x0c0a10);return p;
+}
+
+//================ PIEŚŃ DRUGA: WROGOWIE ================
+Object.assign(FOE_LOOKS,{
+  grasant:{skin:0xa8835c,hair:0x231c14,hairStyle:5,top:0x4e4030,top2:0x362c20,pants:0x3a322c,boots:0x241f1a,weapon:'axe',scar:true},
+  weteran:{skin:0xb08a5e,hair:0x6e6256,hairStyle:0,top:0x4e4a44,top2:0x36332e,pants:0x3a3d44,boots:0x23262b,weapon:'sword',helm:true,shield:true},
+  przemytnik:{skin:0xb39064,hair:0x2a221a,hairStyle:2,top:0x39424e,top2:0x272e38,pants:0x333a44,boots:0x202830,weapon:'crossbow'},
+  kapitan_wrakow:{skin:0xa8835c,hair:0x16120e,hairStyle:1,top:0x2e3a4e,top2:0x1f2a3a,pants:0x2a323e,boots:0x1b222b,weapon:'sword',scar:true,plume:true,grim:true},
+});
+Object.assign(ENEMIES,{
+  grasant:{name:'Grasant',hp:50,atk:17,def:7,dex:6,spd:6,xp:48,gold:42,
+    res:{},drops:{bandaz:.3},spr:{gen:'human',look:FOE_LOOKS.grasant},
+    acts:[{w:3,kind:'attack',pow:1,type:'slash'},{w:1,kind:'attack',pow:1.4,type:'slash',name:'Rąbnięcie w odsłonę'}],
+    desc:'Żyje z tego, co wojna zostawiła na polu. Czyli ze wszystkiego.'},
+  weteran:{name:'Weteran bez sztandaru',hp:64,atk:16,def:12,dex:6,spd:5,xp:56,gold:48,
+    res:{slash:.6,pierce:.85},drops:{osełka:.2},spr:{gen:'human',look:FOE_LOOKS.weteran},
+    acts:[{w:3,kind:'attack',pow:1,type:'slash'},{w:1,kind:'guard',name:'Stary szyk'},{w:1,kind:'attack',pow:1.3,type:'slash',name:'Cięcie z półobrotu'}],
+    desc:'Przeżył kompanię, sztandar i wiarę. Została mu tylko musztra.'},
+  ghul:{name:'Ghul pobojowiska',hp:54,atk:17,def:6,dex:6,spd:7,xp:52,gold:0,
+    res:{pierce:.6,fire:1.4},drops:{ziola:.25},spr:{gen:'drowned',seed:171,col:0x6e6a5e},
+    acts:[{w:3,kind:'attack',pow:1,type:'slash'},{w:1,kind:'attack',pow:1.2,type:'pierce',name:'Zgniłe zębiska',status:'bleed',ch:.5}],
+    desc:'Wojna karmi takie rzeczy latami. To już nie jest głód — to nawyk.'},
+  choragzy:{name:'Chorąży upiorów',hp:124,atk:20,def:6,dex:9,spd:10,xp:115,gold:0,elite:true,
+    res:{slash:.7,pierce:.7,blunt:.7,fire:1.5},drops:{sole:.5},spr:{gen:'ghost',seed:177,col:0x8a7488,scale:3},
+    acts:[{w:3,kind:'attack',pow:1,type:'dark'},{w:2,kind:'attack',pow:1.2,type:'dark',name:'Apel poległych',target:'all',status:'fear',ch:.4}],
+    desc:'Niesie sztandar, którego nikt żywy nie widzi. Polegli wciąż za nim idą.'},
+  przemytnik:{name:'Przemytnik',hp:52,atk:18,def:6,dex:9,spd:7,xp:50,gold:56,
+    res:{},drops:{smola:.3},spr:{gen:'human',look:FOE_LOOKS.przemytnik},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce'},{w:1,kind:'attack',pow:1.4,type:'pierce',name:'Bełt zza wraku'}],
+    desc:'Wozi sól, stal i ludzi. Wszystko w jedną stronę.'},
+  morski:{name:'Morski topielec',hp:58,atk:17,def:7,dex:4,spd:4,xp:54,gold:0,
+    res:{pierce:.5,slash:.85,fire:1.5},drops:{kwiat:.1},spr:{gen:'drowned',seed:181,col:0x4a6e66},
+    acts:[{w:3,kind:'attack',pow:1,type:'blunt'},{w:1,kind:'attack',pow:1.1,type:'blunt',name:'Objęcia przyboju',status:'stun',ch:.3}],
+    desc:'Morze oddaje topielców przy nowiu. Z odsetkami.'},
+  krab:{name:'Krab wrakowy',hp:44,atk:15,def:13,dex:5,spd:5,xp:46,gold:0,
+    res:{slash:.5,pierce:.5,blunt:1.5},drops:{ryba:.4},spr:{gen:'crab',seed:185,col:0x8a4a32},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce'},{w:1,kind:'attack',pow:1.3,type:'pierce',name:'Szczypce',status:'bleed',ch:.4}],
+    desc:'Wyrósł na tym, co morze wyrzuca. Ostatnio wyrzuca dużo.'},
+  kapitan_wrakow:{name:'Kapitan Wraków',hp:210,atk:21,def:10,dex:9,spd:8,xp:210,gold:320,elite:true,
+    res:{},drops:{sole:1},spr:{gen:'human',look:FOE_LOOKS.kapitan_wrakow},
+    acts:[{w:3,kind:'attack',pow:1,type:'slash'},{w:2,kind:'attack',pow:1.4,type:'slash',name:'Cięcie abordażowe',status:'bleed',ch:.4},{w:1,kind:'buff',buff:{atk:1.3},dur:3,name:'Wilczy uśmiech'}],
+    desc:'Jego statek zatonął, ale on nie zszedł z pokładu. Pilnuje ładunku, który nie jest już jego.'},
+  slepy_gornik:{name:'Ślepy górnik',hp:56,atk:18,def:7,dex:5,spd:6,xp:52,gold:16,
+    res:{dark:.5},drops:{okowita:.25},spr:{gen:'possessed',seed:191,col:0x46413a,skin:0x8a8276},
+    acts:[{w:3,kind:'attack',pow:1,type:'blunt'},{w:1,kind:'attack',pow:1.3,type:'dark',name:'Szept z przodka',status:'fear',ch:.4}],
+    desc:'Kopał za głęboko i czegoś dosłuchał się w ścianie. Oczy oddał dobrowolnie.'},
+  nietoperze:{name:'Chmara nietoperzy',hp:36,atk:16,def:3,dex:11,spd:13,xp:44,gold:0,
+    res:{blunt:.7},drops:{},spr:{gen:'bats',seed:195},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce'},{w:1,kind:'attack',pow:1.1,type:'pierce',name:'Wir skrzydeł',debuff:{dex:.7},dur:3}],
+    desc:'Tysiąc małych ukąszeń. Lampa je płoszy, ciemność ośmiela.'},
+  gniazdowiec:{name:'Gniazdowiec',hp:48,atk:17,def:7,dex:8,spd:9,xp:52,gold:0,
+    res:{},drops:{ziola:.3},spr:{gen:'spider',seed:199,col:0x3a3026},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce'},{w:2,kind:'attack',pow:.95,type:'pierce',name:'Jadowite kły',status:'poison',ch:.7}],
+    desc:'Pomiot Matki. Oplata chodniki nicią mocniejszą niż konopny powróz.'},
+  matka_gniazda:{name:'MATKA GNIAZDA',hp:680,atk:24,def:11,dex:8,spd:7,xp:520,gold:0,boss:true,
+    res:{pierce:.8,fire:1.35},drops:{lampa:1},spr:{gen:'spider',seed:203,col:0x46342a,big:true,scale:2},
+    acts:[{w:3,kind:'attack',pow:1,type:'pierce',name:'Kły'},{w:2,kind:'attack',pow:1.2,type:'pierce',name:'Jad przodka',status:'poison',ch:.6},{w:1,kind:'attack',pow:1.1,type:'blunt',target:'all',name:'Tupot odnóży'}],
+    phase:{at:.5,say:'Odwłok pęka wzdłuż szwu. Pomiot wylewa się falą i wpełza z powrotem w rany matki.',buff:{atk:1.3,spd:1.3},acts:[{w:3,kind:'attack',pow:1.4,type:'pierce',name:'Szał gniazda'},{w:2,kind:'attack',pow:1.1,type:'pierce',target:'all',name:'Deszcz pomiotu',status:'poison',ch:.4}]},
+    desc:'Górnicy mówili o "żyle, która oddycha". Potem przestali mówić w ogóle.'},
+});
+Object.assign(ENC,{
+  pobojowisko:{rate:.13,music:'battle',bg:'battlefield',
+    day:[['grasant'],['grasant','grasant'],['weteran'],['ghul'],['weteran','grasant'],['kruki','ghul']],
+    night:[['upior','upior'],['choragzy'],['ghul','upior'],['cien','cien'],['upior','upior','upior']]},
+  wybrzeze:{rate:.13,music:'battle',bg:'coast',
+    day:[['przemytnik'],['krab'],['przemytnik','krab'],['morski'],['krab','krab'],['przemytnik','przemytnik']],
+    night:[['morski','morski'],['upior','morski'],['cien','morski']]},
+  kopalnie:{rate:.12,music:'battle',bg:'mine',
+    day:[['slepy_gornik'],['nietoperze'],['gniazdowiec'],['gniazdowiec','nietoperze'],['slepy_gornik','gniazdowiec'],['gniazdowiec','gniazdowiec']],night:null},
+});
+
+//================ PIEŚŃ DRUGA: MAPY ================
+function genHarbor(){
+  const w=34,h=22,g=[];for(let y=0;y<h;y++)g.push(new Array(w).fill('.'));
+  gridRect(g,0,0,w-1,0,'T');gridRect(g,0,h-1,w-1,h-1,'T');gridRect(g,0,0,0,h-1,'T');gridRect(g,w-1,0,w-1,h-1,'T');
+  gridRect(g,29,0,33,21,'~');   // zatoka
+  gridRect(g,26,1,28,20,'q');   // plaża
+  gridRect(g,10,7,22,15,'k');   // rynek
+  gridRect(g,1,11,9,12,'=');    // trakt od bramy
+  gridRect(g,27,12,31,12,'b');  // pomost
+  g[11][0]='=';g[12][0]='=';
+  g[21][26]='q';g[21][27]='q';
+  g[4][20]='G';g[5][21]='G';g[4][22]='G';g[5][23]='G'; // cmentarzyk
+  [[3,3],[7,4],[3,7],[3,15],[8,16]].forEach(([x,y])=>{g[y][x]='t';});
+  return g.map(r=>r.join(''));
+}
+function genCoast(){
+  const land=genWild({seed:4005,w:40,h:20,base:'.',alt:',',dense:['t','R','t'],border:'T',path:':',encCh:';',blobs:14,encBlobs:8,
+    paths:[[[5,1],[10,10]],[[10,10],[20,16]],[[10,10],[20,5]]],
+    force:[[11,12,'.'],[12,12,'F'],[13,12,'.'],[12,13,'.'],[11,13,'.']]});
+  const r=RNG(4006);
+  const rows=land.map((row,y)=>{
+    if(y===0||y===19)return row;
+    const sand=24+r.i(-1,1),sea=sand+4+r.i(0,2);
+    return row.slice(0,sand)+'q'.repeat(Math.max(0,sea-sand))+'~'.repeat(40-sea);
+  });
+  const set=(x,y,ch)=>{rows[y]=rows[y].slice(0,x)+ch+rows[y].slice(x+1);};
+  set(4,0,'.');set(5,0,'.');set(4,1,'.');set(5,1,'.');           // wejście z Przystani
+  for(let x=27;x<=32;x++){set(x,8,'q');set(x,9,'q');set(x,10,'q');} // ławica pod wrakiem
+  return rows;
+}
+function genMine(){
+  const w=36,h=24,g=[];for(let y=0;y<h;y++)g.push(new Array(w).fill('#'));
+  const r=RNG(4007);
+  const carve=(x0,y0,x1,y1)=>{let x=x0,y=y0,guard=0;g[y][x]='f';
+    while((x!==x1||y!==y1)&&guard++<700){
+      const dx=Math.sign(x1-x),dy=Math.sign(y1-y);
+      if(r.chance(.72)){if(dx&&(r.chance(.5)||!dy))x+=dx;else if(dy)y+=dy;else x+=dx;}
+      else{x=clamp(x+r.i(-1,1),2,w-3);y=clamp(y+r.i(-1,1),2,h-3);}
+      g[y][x]='f';if(r.chance(.5))g[y][clamp(x+r.i(-1,1),2,w-3)]='f';
+    }};
+  gridRect(g,6,5,12,9,'f');    // komora zachodnia
+  gridRect(g,24,4,31,8,'f');   // komora wschodnia
+  gridRect(g,5,15,11,19,'f');  // komora dolna
+  gridRect(g,20,14,32,21,'f'); // GNIAZDO
+  carve(18,22,9,17);carve(9,17,9,8);carve(9,8,27,6);carve(27,6,26,14);carve(9,17,21,17);
+  gridRect(g,17,21,18,23,'f'); // wejście
+  return g.map(rw=>rw.join(''));
+}
+Object.assign(MAPS,{
+  pobojowisko:{name:'Pobojowisko Stu Chorągwi',music:'swamp',outdoor:true,pad:'T',enc:'pobojowisko',encTiles:['a'],wBias:{rain:.3,fog:.35},
+    grid:genWild({seed:4010,w:44,h:26,base:'a',alt:'a',clear:'a',dense:['R','t','G'],border:'T',path:'=',encCh:'a',blobs:24,encBlobs:0,
+      paths:[[[21,24],[21,12]],[[21,12],[42,12]],[[21,12],[10,2]]],
+      force:[[20,25,'='],[21,25,'='],[20,24,'='],[21,24,'='],
+        [43,11,'='],[43,12,'='],[42,11,'='],[42,12,'='],
+        [10,0,'='],[11,0,'='],[10,1,'='],[11,1,'='],[10,2,'='],[11,2,'='],
+        [9,1,'M'],[12,1,'M'],[9,2,'M'],[12,2,'M'],
+        [32,18,'a'],[18,11,'a'],[19,11,'a']]}),
+    objects:[
+      {type:'prop',p:'banner0',x:16,y:8},{type:'prop',p:'banner1',x:28,y:16},{type:'prop',p:'banner2',x:34,y:7},
+      {type:'prop',p:'banner0',x:12,y:18},{type:'prop',p:'banner1',x:25,y:20},
+      {type:'prop',p:'gallows',x:18,y:11},
+      {type:'prop',p:'cart',x:30,y:10},{type:'prop',p:'cart',x:8,y:14},
+      {type:'prop',p:'cross',x:36,y:16},
+      {type:'prop',p:'bones',x:14,y:13,nosolid:true},{type:'prop',p:'bones',x:26,y:9,nosolid:true},
+      {type:'prop',p:'bones',x:33,y:19,nosolid:true},{type:'prop',p:'bones',x:7,y:7,nosolid:true},
+      {type:'pickup',id:'strzep',x:32,y:18,item:'strzep',p:'sztandar'},
+      {type:'trig',x:21,y:23,id:'pobo',script:'t_pobojowisko',once:true},
+      {type:'sign',x:22,y:13,text:'Tu stanęło sto chorągwi. Policz pale — tyle ich wróciło.'},
+      {type:'chest',id:'b1',x:5,y:5,gold:150},
+      {type:'chest',id:'b2',x:38,y:20,item:'bandaz',n:3},
+      {type:'exit',x:20,y:25,to:'przelecz',tx:24,ty:1,dir:'down'},
+      {type:'exit',x:21,y:25,to:'przelecz',tx:24,ty:1,dir:'down'},
+      {type:'exit',x:43,y:11,to:'przystan',tx:1,ty:11,dir:'right'},
+      {type:'exit',x:43,y:12,to:'przystan',tx:1,ty:12,dir:'right'},
+      {type:'exit',x:10,y:0,to:'kopalnie',tx:17,ty:22,dir:'up'},
+      {type:'exit',x:11,y:0,to:'kopalnie',tx:18,ty:22,dir:'up'},
+    ]},
+  przystan:{name:'Przystań Maruderów',music:'village',outdoor:true,pad:'T',wBias:{rain:.35,fog:.1},
+    grid:genHarbor(),objects:[
+      {type:'house',kind:'church',x:12,y:6,seed:71,door:'kosciol'},
+      {type:'house',kind:'m2',x:4,y:9,tw:4,seed:72,style:'karczma',door:'karczma2'},
+      {type:'house',kind:'m2',x:23,y:10,tw:3,seed:73,style:'kram',door:'kram2'},
+      {type:'house',kind:'m2',x:10,y:18,tw:3,seed:74,style:'dom',door:'kuznia2'},
+      {type:'house',kind:'m2',x:19,y:18,tw:3,seed:75,style:'dom',door:'dom_hoddera'},
+      {type:'house',kind:'m2',x:25,y:5,tw:3,seed:76,style:'dom',door:'chata_rybaka'},
+      {type:'prop',p:'well',x:16,y:10},
+      {type:'prop',p:'stall',x:19,y:8},
+      {type:'prop',p:'lamp',x:10,y:8},{type:'prop',p:'lamp',x:22,y:13},{type:'prop',p:'lamp',x:13,y:15},{type:'prop',p:'lamp',x:3,y:11},
+      {type:'prop',p:'barrel',x:8,y:13},{type:'prop',p:'barrel',x:23,y:14},{type:'prop',p:'barrel',x:28,y:11},
+      {type:'prop',p:'boat',x:27,y:16},{type:'prop',p:'net',x:26,y:9},
+      {type:'prop',p:'cross',x:22,y:4},
+      {type:'sign',x:2,y:13,text:'Przystań Maruderów. Miecze przy pasie, długi przy sercu.'},
+      {type:'npc',npc:'proboszcz',x:15,y:8,dlg:'proboszcz',static:true},
+      {type:'npc',npc:'werbownik',x:20,y:16,dlg:'werbownik'},
+      {type:'npc',npc:'karczmarka',x:5,y:10,dlg:'karczmarka',static:true},
+      {type:'npc',npc:'rybak',x:29,y:12,dlg:'rybak',static:true,dir:'down'},
+      {type:'npc',npc:'wdowa',x:21,y:5,dlg:'wdowa'},
+      {type:'npc',npc:'pijak',x:17,y:12,dlg:'pijak'},
+      {type:'npc',npc:'straznik',x:2,y:11,dlg:'straznik2',static:true,dir:'left'},
+      {type:'npc',npc:'dziecko',x:14,y:13,dlg:'dziecko2'},
+      {type:'chest',id:'h1',x:27,y:2,gold:200},
+      {type:'chest',id:'h2',x:2,y:19,item:'ryba',n:3},
+      {type:'exit',x:0,y:11,to:'pobojowisko',tx:42,ty:12,dir:'left'},
+      {type:'exit',x:0,y:12,to:'pobojowisko',tx:42,ty:12,dir:'left'},
+      {type:'exit',x:26,y:21,to:'wybrzeze',tx:4,ty:1,dir:'down'},
+      {type:'exit',x:27,y:21,to:'wybrzeze',tx:5,ty:1,dir:'down'},
+    ]},
+  wybrzeze:{name:'Wybrzeże Wraków',music:'swamp',outdoor:true,pad:'T',enc:'wybrzeze',encTiles:['.',',',';','q'],wBias:{rain:.45,fog:.15},
+    grid:genCoast(),objects:[
+      {type:'prop',p:'wreck',x:30,y:8},
+      {type:'prop',p:'boat',x:27,y:14},{type:'prop',p:'boat',x:20,y:18},
+      {type:'prop',p:'net',x:24,y:4},
+      {type:'prop',p:'bones',x:16,y:8,nosolid:true},{type:'prop',p:'bones',x:28,y:12,nosolid:true},
+      {type:'prop',p:'barrel',x:13,y:12},
+      {type:'trig',x:12,y:13,id:'przemyt',script:'t_przemytnicy',once:true},
+      {type:'trig',x:29,y:9,script:'t_kapitan',unless:'kapitan_done',bounce:true},
+      {type:'trig',x:30,y:9,script:'t_kapitan',unless:'kapitan_done',bounce:true},
+      {type:'trig',x:31,y:9,script:'t_kapitan',unless:'kapitan_done',bounce:true},
+      {type:'chest',id:'c1',x:31,y:10,item:'relikwia',ifFlag:'kapitan_done'},
+      {type:'chest',id:'c2',x:6,y:16,item:'smola',n:2},
+      {type:'sign',x:6,y:2,text:'Zatoka Wraków. Morze tu bierze, a oddaje wyłącznie nocą.'},
+      {type:'exit',x:4,y:0,to:'przystan',tx:26,ty:20,dir:'up'},
+      {type:'exit',x:5,y:0,to:'przystan',tx:27,ty:20,dir:'up'},
+    ]},
+  kopalnie:{name:'Stare Kopalnie',music:'dungeon',dark:true,pad:'#',enc:'kopalnie',encTiles:['f'],floor:'floor_mine',wall:'wall_mine',
+    grid:genMine(),objects:[
+      {type:'prop',p:'torch',x:16,y:21,nosolid:true},{type:'prop',p:'torch',x:19,y:21,nosolid:true},
+      {type:'prop',p:'support',x:9,y:12,nosolid:true},{type:'prop',p:'support',x:14,y:6,nosolid:true},
+      {type:'prop',p:'support',x:22,y:6,nosolid:true},{type:'prop',p:'support',x:9,y:19,nosolid:true},
+      {type:'prop',p:'wagon',x:7,y:6},{type:'prop',p:'halda',x:28,y:5},{type:'prop',p:'halda',x:6,y:16},
+      {type:'prop',p:'crystal',x:25,y:5},{type:'prop',p:'crystal',x:10,y:18},
+      {type:'prop',p:'bones',x:8,y:17,nosolid:true},{type:'prop',p:'bones',x:23,y:16,nosolid:true},
+      {type:'prop',p:'kokon',x:24,y:16},{type:'prop',p:'kokon',x:28,y:17},{type:'prop',p:'kokon',x:31,y:19},
+      {type:'prop',p:'kokon',x:22,y:19},{type:'prop',p:'kokon',x:26,y:20},
+      {type:'trig',x:21,y:14,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:15,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:16,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:17,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:18,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:19,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:20,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:21,y:21,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:25,y:14,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:26,y:14,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'trig',x:27,y:14,script:'t_matka',unless:'kopalnie_boss',bounce:true},
+      {type:'chest',id:'m1',x:7,y:5,item:'smola',n:2},
+      {type:'chest',id:'m2',x:30,y:5,gold:380},
+      {type:'chest',id:'m3',x:31,y:20,item:'opatrunek_p',n:2,ifFlag:'kopalnie_boss'},
+      {type:'exit',x:17,y:23,to:'pobojowisko',tx:10,ty:1,dir:'down'},
+      {type:'exit',x:18,y:23,to:'pobojowisko',tx:11,ty:1,dir:'down'},
+    ]},
+});
+// pogodowe skłonności starych map
+MAPS.bagna.wBias={rain:.18,fog:.42};
+MAPS.przelecz.wBias={rain:.25,fog:.2};
+MAPS.las.wBias={rain:.25,fog:.18};
+MAPS.wioska.wBias={rain:.25,fog:.1};
+
+//================ PIEŚŃ DRUGA: PRZEDMIOTY I SKLEPY ================
+Object.assign(ITEMS,{
+  ryba:{name:'Suszona ryba',type:'use',price:20,icon:'meat',heal:60,desc:'Twarda jak podeszwa, ale stawia na nogi. Leczy 60 ran.'},
+  smola:{name:'Garniec smoły',type:'use',battle:true,price:45,icon:'flame',dmg:80,dmgType:'fire',target:'enemy',desc:'Płonąca smoła na jednego wroga (80).'},
+  lampa:{name:'Lampa górnicza',type:'acc',price:380,icon:'flame',stats:{},desc:'Solidna, oliwna. Znacznie poszerza krąg światła w podziemiach.'},
+  zbroja_wet:{name:'Zbroja weterana',type:'armor',price:950,icon:'armor',stats:{def:9,spd:-1},desc:'Łatana po trzech właścicielach. Wszyscy zginęli od czegoś innego.'},
+  palasz_kpt:{name:'Pałasz kapitański',type:'weapon',who:'mira',price:1500,icon:'sword',stats:{atk:14},desc:'Mosiężny kosz, klinga z morskiej stali.'},
+  noze_czarne:{name:'Noże z czarnej stali',type:'weapon',who:'wit',price:1400,icon:'bow',stats:{atk:12,dex:2},desc:'Kute w kopalnianej kuźni. Nie odbijają nawet księżyca.'},
+  sztandar_komp:{name:'Sztandar kompanii',type:'acc',price:0,icon:'scroll',stats:{sp:8,atk:2},desc:'Zszyty ze strzępów. Niesie się go sercem, nie ręką.'},
+  relikwiarz:{name:'Relikwiarz podróżny',type:'acc',price:0,icon:'amulet',stats:{def:2,dex:2},desc:'Mała kapliczka na rzemieniu. Pachnie kadzidłem i solą.'},
+  relikwia:{name:'Relikwiarz św. Brendana',type:'key',price:0,icon:'gem',desc:'Okopcony, zalany solą — ale cały. Lambert czeka.'},
+  strzep:{name:'Strzęp sztandaru',type:'key',price:0,icon:'scroll',desc:'Barwy Trzeciej Chorągwi. Drzewce złamane, ślady wleczenia na północ.'},
+});
+Object.assign(SHOPS,{
+  bron2:{name:'Kuźnia Przystani',items:['dwur_pogrom','palasz_kpt','noze_czarne','zbroja_wet','polplyta','kolczuga','osełka']},
+  towary2:{name:'Kram przy rynku',items:['opatrunek_p','gulasz','ryba','okowita_s','sole','bomba','smola','lampa','amulet_kruka','opaska']},
+});
+
+//================ PIEŚŃ DRUGA: MIESZKAŃCY PRZYSTANI ================
+const NPC_LOOKS2={
+  werbownik:{skin:0xb08a5e,hair:0x4a3322,hairStyle:0,top:0x4e4434,top2:0x363023,pants:0x3a322c,boots:0x241f1a,weapon:'sword',scar:true},
+  proboszcz:{skin:0xc8a070,hair:0x8a8276,hairStyle:4,top:0x4e4a44,top2:0x36332e,pants:0x3a3631,boots:0x232019,weapon:'none'},
+  karczmarka:{skin:0xc8a070,hair:0x6a3a22,hairStyle:1,top:0x5e4452,top2:0x42303a,pants:0x4a3a42,boots:0x241f1a,weapon:'none'},
+  rybak:{skin:0xa8835c,hair:0x6e6256,hairStyle:2,top:0x39424e,top2:0x272e38,pants:0x333a44,boots:0x202830,weapon:'none'},
+  wdowa:{skin:0xb9906a,hair:0x1e1812,hairStyle:2,top:0x2a2530,top2:0x1c1820,pants:0x262230,boots:0x181520,weapon:'none',grim:true},
+  pijak:{skin:0xc09368,hair:0x5a4630,hairStyle:5,top:0x4f4636,top2:0x383125,pants:0x3a332a,boots:0x262019,weapon:'none',grim:true},
+};
+for(const id in NPC_LOOKS2)IMG.npcs[id]={walk:walkSheet(NPC_LOOKS2[id]),portrait:portraitPix(NPC_LOOKS2[id]).toCanvas()};
+Object.assign(DISPLAY_NAMES,{werbownik:'Hodder, werbownik',proboszcz:'Proboszcz Lambert',karczmarka:'Karczmarka Jagna',
+  rybak:'Rybak Ulf',wdowa:'Wdowa Greta',pijak:'Stary Chorąży'});
+for(const id of['grasant','weteran','ghul','choragzy','przemytnik','morski','krab','kapitan_wrakow','slepy_gornik','nietoperze','gniazdowiec','matka_gniazda'])
+  IMG.enemies[id]=enemySprite(ENEMIES[id].spr);
+Object.assign(ACHV,{
+  gniazdo:{name:'Wypalone gniazdo',desc:'Pokonaj Matkę Gniazda w Starych Kopalniach.'},
+  morski_wilk:{name:'Ostatni abordaż',desc:'Pokonaj Kapitana Wraków.'},
+});
+
+//================ PIEŚŃ DRUGA: QUESTY ================
+Object.assign(QUESTS,{
+  choragiew:{name:'Zaginiona chorągiew',stages:[
+    'Hodder szuka śladu Trzeciej Chorągwi Najemnej, która rok temu pomaszerowała ku kopalniom. Przeszukaj pobojowisko.',
+    'Strzęp sztandaru znaleziony — ślady wleczenia prowadzą do Starych Kopalń na północy pobojowiska.',
+    'Gniazdo wybite, chorągiew pomszczona. Wróć do Hoddera w Przystani.',
+    'Hodder zapłacił, postawił kolejkę i pierwszy raz od roku spał bez świecy. Pieśń chorągwi ma swój koniec.'],done:3},
+  relikwia:{name:'Relikwia z głębin',stages:[
+    'Proboszcz Lambert prosi o relikwiarz św. Brendana z wraku na zatoce. Strzeże go samozwańczy Kapitan Wraków.',
+    'Relikwiarz wrócił na ołtarz. Lambert błogosławi drużynę, ilekroć poprosi.'],done:1},
+});
+
+//================ PIEŚŃ DRUGA: DIALOGI I SCENY ================
+const blessing={run:()=>{for(const h of G.party)if(h.hp>0)h.status.regen=4;AudioSys.sfx('holy');pushToast('Opatrzeni błogosławieństwem (regeneracja)','st_regen');}};
+Object.assign(NPC_DLG,{
+  karczma2:()=>[
+    {say:['karczmarka','"Ostatni Brzeg". Strawa z morza, izby bez pluskiew, plotki za darmo.']},
+    {choice:[
+      {t:'Nocleg (30 srebra)',do:G.gold>=30?[{gold:-30},{say:['karczmarka','Izba od zatoki. Szum fal zagłusza... no, większość rzeczy.']},{heal:true},{say:['','Drużyna odpoczywa. Rany się zasklepiają, wigor wraca.']}]:[{say:['karczmarka','Bez srebra? To może chociaż wodę ze studni, na koszt rynku.']}]},
+      {t:'Plotki',do:[{say:['karczmarka','Górnicy przestali schodzić do Starych Kopalń na długo przed wojną. Mówili, że żyła oddycha. A na zatoce zalągł się jakiś "kapitan", co żywym cła wymierza.']}]},
+      {t:'Wyjdź',do:[]},
+    ]},
+  ],
+  kram2:()=>[
+    {choice:[
+      {t:'Handel',do:[{shop:'towary2'}]},
+      {t:'Plotki',do:[{say:['kupiec','Lampy górnicze schodzą ostatnio dziwnie dobrze. Kupują ci, co twierdzą, że w kopalniach COŚ świeci. Odradzam sprawdzanie, polecam zakup.']}]},
+      {t:'Wyjdź',do:[]},
+    ]},
+  ],
+  kuznia2:()=>[
+    {say:['','Kuźnia Przystani. Nad paleniskiem wisi szyld: "Stal morska, czarna i hartowana. Dla naznaczonych bez targowania."']},
+    {shop:'bron2'},
+  ],
+  dom_hoddera:()=>[{say:['','Izba werbownika. Na stole mapa z czterdziestoma skreślonymi nazwiskami. Hodder kręci się gdzieś po rynku.']}],
+  chata_rybaka:()=>[{say:['','Sieci, sól i wiatr. Ulf mieszka bliżej morza niż ludzi.']}],
+  kosciol:()=>[
+    {say:['','Wnętrze pachnie woskiem i morzem. Witraże barwią popiół na posadzce na błękit i złoto.']},
+    {choice:[
+      {t:'Pomódl się (błogosławieństwo)',do:G.flags.blog_free?[blessing]:(G.gold>=25?[{gold:-25},blessing]:[{say:['proboszcz','Bóg nie liczy srebra, ale świece same się nie kupią. Wróć z groszem, synu.']}])},
+      {t:'Wyjdź',do:[]},
+    ]},
+  ],
+  proboszcz:()=>{
+    if(!('relikwia'in G.quests))return[
+      {say:['proboszcz','Witaj w Przystani, naznaczony. Tak, widzę znak — i widzę, że jeszcze nie zjadł ci serca. To rzadkie.']},
+      {say:['proboszcz','Mam prośbę. Na zatoce gnije wrak "Świętego Brendana". W ładowni został relikwiarz. Jakiś rzezimieszek mieni się kapitanem tego truchła i bierze myto. Przynieś relikwiarz, a kościół będzie ci otwarty.']},
+      {quest:'relikwia',stage:0},
+    ];
+    if(G.quests.relikwia===0&&hasItem('relikwia'))return[
+      {say:['proboszcz','...wrócił. Po dwudziestu latach. Niech morze odpuści tym, których zatrzymało.']},
+      {take:'relikwia'},
+      {give:'relikwiarz'},
+      {flag:'blog_free'},
+      {quest:'relikwia',stage:1},
+      {say:['proboszcz','Kościół jest twój, naznaczony. Przychodź po błogosławieństwo przed każdą drogą — za darmo, po wsze czasy.']},
+      blessing,
+    ];
+    if(G.quests.relikwia===0)return[{say:['proboszcz','Wrak stoi na mieliźnie na wschodzie zatoki. Kapitan ma ludzi i kuszę. Miej i ty coś.']}];
+    return[
+      {choice:[
+        {t:'Błogosławieństwo',do:G.flags.blog_free?[blessing]:(G.gold>=25?[{gold:-25},blessing]:[{say:['proboszcz','Wróć z groszem na świece, synu.']}])},
+        {t:'O piętnie',do:[{say:['proboszcz','Piętno to rachunek wystawiony nie tobie — a mimo to ty go spłacasz. Znałem jednego, co nosił znak dziesięć lat. Mówił: nie walcz z nocą, walcz do świtu. Jest różnica.']}]},
+        {t:'Wyjdź',do:[]},
+      ]},
+    ];
+  },
+  werbownik:()=>{
+    if(!('choragiew'in G.quests))return[
+      {say:['werbownik','Hodder. Werbowałem dla Trzeciej Chorągwi — czterdzieści nazwisk, sam je wpisywałem. Rok temu poszli na północ kopać srebro z kontraktu i tyle ich widziano.']},
+      {say:['werbownik','Kruki z twojej kompanii też wpisywałem, najemniku. Znajdź mi ślad Trzeciej na pobojowisku. Płacę srebrem i spokojnym snem — moim.']},
+      {quest:'choragiew',stage:0},
+    ];
+    const st=G.quests.choragiew;
+    if(st===0&&hasItem('strzep'))return[
+      {say:['werbownik','Pokaż... Tak. Barwy Trzeciej. Ślady wleczenia, mówisz? Na północ, do kopalń?']},
+      {take:'strzep'},
+      {quest:'choragiew',stage:1},
+      {say:['werbownik','Górnicy gadali o żyle, która oddycha. Miałem to za bełkot. Idź tam, najemniku. Dowiedz się, co zjadło czterdzieści nazwisk.']},
+    ];
+    if(st===0)return[{say:['werbownik','Pobojowisko jest wielkie, ale chorągiew niosła barwy — bordo i złoto. Szukaj pali, sztandarów, czegokolwiek.']}];
+    if(st===1)return[{say:['werbownik','Kopalnie. Wejście od północy pobojowiska, między skałami. Weź światło. I wróć.']}];
+    if(st===2)return[
+      {say:['werbownik','Po twoich oczach widzę, że już wiem. Gniazdo? I oni wszyscy...?']},
+      {say:['brand','Kokony w głębi. Czterdzieści — nie liczyłem. Matka nie żyje. Nikt już tam nie zniknie.']},
+      {say:['werbownik','...wykreślę nazwiska. Ostatni raz. Masz — żołd Trzeciej i coś jeszcze. Zszyłem to ze strzępów, które przynosili mi przez lata. Niech niesie się dalej.']},
+      {gold:400},
+      {give:'sztandar_komp'},
+      {quest:'choragiew',stage:3},
+    ];
+    return[{say:['werbownik','Czterdzieści nazwisk wykreślonych. Pierwszy raz od roku śpię bez świecy. Dzięki tobie, Kruku.']}];
+  },
+  rybak:()=>G.weather==='rain'?[{say:['rybak','Deszcz na zatoce to dobra pora. Topielce nie odróżniają, gdzie kończy się morze. Trzymaj się pomostu.']}]:[{say:['rybak','Łowię przy brzegu. Dalej nie pływam, odkąd "Brendan" wszedł na mieliznę z całą załogą przy burtach. Stali. Patrzyli.']}],
+  wdowa:()=>[{say:['wdowa','Mąż leży przy kościele, syn na pobojowisku, a brat... brat podobno wciąż chodzi. Nocą, z innymi. Jeśli go spotkasz, najemniku — niech to będzie szybkie.']}],
+  pijak:()=>[
+    {say:['pijak','Byłem chorążym u Trzeciej, wiesz? Jedyny, co nie poszedł — noga, o. Złamana. Złamałem ją sam, sztandarem. Najlepsza decyzja w życiu.']},
+    {say:['pijak','...czterdziestu chłopa, panie. Czterdziestu. Wypij ze mną albo idź. Najlepiej jedno i drugie.']},
+  ],
+  straznik2:()=>isNight()?[{say:['straznik','Brama zaryglowana do świtu. Słyszysz pobojowisko? To nie wiatr tak zawodzi. To apel.']}]:[{say:['straznik','Na zachodzie pobojowisko — za dnia grasanci, nocą gorzej. Na południu zatoka. Wszędzie indziej: nie polecam.']}],
+  dziecko2:()=>[{say:['dziecko','Proboszcz mówi, że jak dzwon bije, to upiory się cofają! A pan ma znak na szyi. Jakby co, to niech pan stoi blisko dzwonu!']}],
+});
+Object.assign(SCRIPTS,{
+  t_pobojowisko:()=>[
+    {say:['','Równina po horyzont. Pale, strzępy sztandarów, koła wozów wrośnięte w błoto. Popiół pada tu gęściej, jakby niebo wciąż było coś winne tej ziemi.']},
+    {say:['mira','Sto chorągwi, Brand. Tu się skończyła wojna, o której śpiewali, że jej nie można przegrać.']},
+    {say:['brand','Piętno piecze mocniej. Cokolwiek żywi się umarłymi — tu ma spiżarnię. Nie nocujmy w polu.']},
+  ],
+  t_przemytnicy:()=>[
+    {say:['','Przy ognisku ktoś gwiżdże. Urywa w pół nuty. — Celnicy? — pyta głos. — Gorzej — odpowiada drugi. — Klienci.']},
+    {battle:{group:['przemytnik','przemytnik'],bg:'coast',canFlee:false}},
+    {say:['wit','Smoła, sól i kusze. Przemytnicy. Obóz mają tu, czyli wrak obstawiony jest na stałe.']},
+    {gold:60},
+  ],
+  t_kapitan:()=>[
+    {say:['','Z ładowni wychodzi człowiek w kapitańskim płaszczu zdjętym z topielca. Za nim dwóch z kuszami.']},
+    {say:['','— Myto za wstęp na pokład "Brendana" — mówi. — Płatne z góry. Krwią też przyjmuję.']},
+    {battle:{group:['kapitan_wrakow','przemytnik'],bg:'coast',music:'boss',boss:true,canFlee:false}},
+    {flag:'kapitan_done'},
+    {run:()=>unlockAchv('morski_wilk')},
+    {say:['','Kapitan osuwa się na deski własnego królestwa. Ładownia stoi otworem — wśród zbutwiałych skrzyń jedna jest okuta i sucha.']},
+  ],
+  t_matka:()=>[
+    {say:['','Chodnik rozszerza się w komorę. Ściany giną pod oprzędem. W kokonach — kształty. Hełmy. Buty. Barwy bordo i złota.']},
+    {say:['wit','Trzecia Chorągiew... wszyscy. Brand. BRAND. Coś schodzi po stropie—']},
+    {battle:{group:['matka_gniazda'],bg:'mine',music:'boss',boss:true,canFlee:false}},
+    {flag:'kopalnie_boss'},
+    {run:()=>{unlockAchv('gniazdo');if(G.quests.choragiew===1)G.quests.choragiew=2;}},
+    {say:['','Cielsko zwija się i nieruchomieje. W nagłej ciszy słychać tylko kapanie wody — i nic więcej. Po raz pierwszy od roku ta góra jest tylko górą.']},
+    {say:['mira','Zbierz znaki tożsamości, ile się da. Hodder będzie chciał wykreślić nazwiska jak należy.']},
+  ],
+});
+
+//================ PIEŚŃ DRUGA: KRONIKI ŁOWÓW (lore) ================
+{
+  const DESC2={
+    wilk:'Starzy myśliwi mówią, że wilki z Czarnego Lasu nie wyją do księżyca, tylko do czegoś za nim.',
+    dzik:'Knury żerują na pobojowiskach od wojny. Niektóre pamiętają smak, którego nie powinny.',
+    bandyta:'Większość nosi jeszcze guziki swoich regimentów. Wojna się skończyła, żołd nie wrócił.',
+    klusownik:'Cięciwy woskują łojem z wisielców. Podobno wtedy strzała "sama szuka".',
+    alfa:'Trzy obławy wracały bez niego i bez paru ludzi. Czwartej nie zwołano.',
+    zboj:'W twierdzy płacili mu od głowy. Nie pytał czyjej.',
+    kusznik:'Bełty moczy w bagnie. Rany po nich gniją szybciej, niż goją.',
+    ogar:'Bandyci szczuli nim jeńców. Nauczył się, że krzyk znaczy posiłek.',
+    zbir:'Tarczę zdjął z bramy spalonego dworu. Herbu nie zdrapał — mówi, że to "referencje".',
+    kiel:'Wyrwał sobie ząb przy odmrożeniu i wstawił wilczy. Przyjął się — tak przynajmniej twierdził.',
+    topielec:'Bagno nie oddaje ciał, póki czegoś z nich nie wyssie. To, co wstaje, jest tylko opakowaniem.',
+    zmija:'Jej jadem kultyści zaprawiają wino ofiarne. Przeżywają nieliczni — tych nazywają "wybranymi".',
+    kultysta:'Pod kapturami noszą maski z kory. Twarze zostawiają w domu — tak mówią. Nikt nie sprawdził, czy dosłownie.',
+    blotny_ogar:'Wabi szczenięcym skomleniem z trzcin. Stare bagienne sztuczki.',
+    opetany:'Pustelnia stoi pusta, ale co noc pali się w niej światło. Nikt nie chodzi gasić.',
+    upior:'Nie mają twarzy, póki nie podejdziesz blisko. Wtedy mają twoją.',
+    szkielet:'Niektóre wciąż trzymają szyk. Chorąży padł, a oni czekają na komendę od trzystu lat.',
+    cien:'Słychać go tylko między uderzeniami serca. Dlatego biegnąc, licz oddechy, nie kroki.',
+    fanatyk:'Bicz pleciony z włosów pokutników. Każdy węzeł to czyjś grzech — twierdzi, że twoje też tam są.',
+    mnich:'Przepisywał świętą księgę, aż litery zaczęły mu odpisywać.',
+    kusznik_zak:'Bełty święci w popiele katedry. Wierzy, że spalona świętość liczy się podwójnie.',
+    inkwizytor:'Zadał tysiąc pytań. Odpowiedzi go nigdy nie interesowały.',
+    biskup:'Spalił katedrę w noc Zaćmienia. Wierni myśleli, że to rozpacz. To była zapłata.',
+    dezerter:'Uciekł spod sztandaru w dzień rzezi. Czasem ucieczka to jedyny rozkaz, który ma sens.',
+    maruder:'Ma wóz pełen butów. Buty zawsze schodzą — mówi — bo umarli idą boso.',
+    kruki:'Podążają za naznaczonymi. Wiedzą, że przy takich zawsze będzie co jeść.',
+    niedzwiedz:'Górale zostawiali mu barany, żeby nie schodził niżej. Wojna zjadła barany.',
+    gwardzista:'Przysięgał rodowi Vorlec na klęczkach. Teraz pilnuje, żeby nikt nie zaglądał do krypty. Też na klęczkach.',
+    czarny_kusznik:'Gwardia kruków strzela do gości od roku. Pytania zaczęły się i skończyły na pierwszym kurierze.',
+    ogar_hrabiego:'Karmione w lochach tym, co zostawało po... gościach hrabiego. Apetyt im został.',
+    rotmistrz:'Otworzył bramy obozu Kruków na rozkaz. Od tamtej nocy śpi w zbroi. Nie pomaga.',
+    hrabia:'Kochał syna ponad życie. Niestety — ponad cudze.',
+    apostol:'Zasłona nie kupuje dusz. Ona wynajmuje ciała. Z opłatą z góry.',
+    grasant:'Pierwszej zimy ograbiał poległych z płaszczy. Tej zimy zdejmuje je z żywych — oszczędza czasu.',
+    weteran:'Nosi hełm po bracie i tarczę po kumie. Mówi, że w środku też już jest po trochu każdego.',
+    ghul:'Zaczynał jak wszyscy — z głodu. Ale pobojowisko uczy, że głód to też rodzaj wierności.',
+    choragzy:'Za życia nie oddał sztandaru. Po śmierci sztandar nie oddał jego.',
+    przemytnik:'Cła nie płaci, bogom nie ufa, topielcom schodzi z drogi. W tej kolejności.',
+    morski:'Załoga "Brendana" stała przy burtach, gdy tonął. Stoi tam nadal — tylko burty zgniły.',
+    krab:'Rybacy znajdują w pancerzach guziki, monety i obrączki. Morskie kraby prowadzą uczciwą księgowość.',
+    kapitan_wrakow:'Nie umiał pływać. Dlatego z wraku zrobił twierdzę — morze go nie obchodziło, póki płaciło.',
+    slepy_gornik:'Górnicy ślepną od ciemności latami. On oddał wzrok w jedną noc — mówił, że "na wymianę".',
+    nietoperze:'Przed wojną wylatywały o zmierzchu jak dym. Teraz nie wylatują wcale. Coś je w środku karmi.',
+    gniazdowiec:'Oprzęd z chodników jest mocniejszy niż lina okrętowa. Górnicy wiązali nim szyby. Krótko.',
+    matka_gniazda:'Stara jak żyła srebra, w której śpi. Górnicy byli pierwsi. Chorągiew była obfitsza.',
+  };
+  for(const k in DESC2)if(ENEMIES[k])ENEMIES[k].desc2=DESC2[k];
+}
 
 // ===== APPEND POINT =====
 </script>
