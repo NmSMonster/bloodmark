@@ -1900,28 +1900,40 @@ const Field={
       const ms=Math.min(64/(MC.mw*16),44/(MC.mh*16));
       const mw=Math.round(MC.mw*16*ms),mh=Math.round(MC.mh*16*ms);
       const mx=W-mw-22,my=12;
+      const pl=this.pl;
+      // gdy postać wchodzi pod minimapę, ta robi się przejrzysta
+      const psx=pl.fx*16+8-cx,psy=pl.fy*16+10-cy;
+      const dreadOn=m.outdoor&&nightAmount()>0.3;
+      const over=psx>mx-16&&psx<mx+mw+18&&psy>my-14&&psy<my+mh+(dreadOn?44:18);
+      if(this.mmA===undefined)this.mmA=1;
+      this.mmA+=( (over?0.2:1) - this.mmA )*0.15;
+      const mA=this.mmA;
+      ctx.save();
+      ctx.globalAlpha=mA;
       panel(mx,my,mw+8,mh+8,.75);
-      ctx.globalAlpha=.85;
+      ctx.globalAlpha=.85*mA;
       ctx.drawImage(MC.frames[0],mx+4,my+4,mw,mh);
-      ctx.globalAlpha=1;
+      ctx.globalAlpha=mA;
       for(const o of MC.objs)if(o.type==='exit'){
         ctx.fillStyle='#c9a35a';
         ctx.fillRect(mx+4+Math.round(o.x*16*ms)-1,my+4+Math.round(o.y*16*ms)-1,2,2);
       }
-      const pl=this.pl;
       ctx.fillStyle=Math.floor(gTime*3)%2?'#e85a4a':'#b8453a';
       ctx.fillRect(mx+4+Math.round((pl.fx*16+8)*ms)-1,my+4+Math.round((pl.fy*16+8)*ms)-1,2,2);
       // Uwaga Zasłony (nocą w polu)
-      if(m.outdoor&&nightAmount()>0.3){
+      if(dreadOn){
         const dy=my+mh+14;
         const pulse=G.dread>70?(.7+Math.sin(gTime*6)*.3):1;
         panel(W-88,dy,72,17,.8);
         ctx.drawImage(IMG.icons.skull,W-85,dy+2);
-        ctx.globalAlpha=pulse;
+        ctx.globalAlpha=pulse*mA;
         bar(W-70,dy+4,50,7,G.dread/100,'#a83a52','#5e1a2a');
-        ctx.globalAlpha=1;
+        ctx.globalAlpha=mA;
+        octx.globalAlpha=mA;
         txt('Zasłona patrzy',W-84,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
+        octx.globalAlpha=1;
       }
+      ctx.restore();
     }
     // dyskretny cel wyprawy + postęp poziomu (lewy dolny róg)
     {
@@ -4783,7 +4795,7 @@ function hudGoal(){
 //================ KRONIKA AKTUALIZACJI ================
 const GAME_VER='Pieśń III';
 const CHANGELOG=[
-  {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami.'},
+  {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami. Minimapa staje się przejrzysta, gdy postać wchodzi pod nią.'},
   {v:'Pieśń II',t:'Świat rośnie',d:'Cztery nowe krainy: Pobojowisko Stu Chorągwi, Przystań Maruderów z gotyckim kościołem i domami z muru pruskiego, Wybrzeże Wraków i Stare Kopalnie z Matką Gniazda. Pogoda (deszcz, mgła), kroniki łowów w bestiariuszu, zadania „Zaginiona chorągiew" i „Relikwia z głębin", dwunastu nowych wrogów.'},
   {v:'Szlif',t:'Ostrzenie klingi',d:'Klatki ataku wrogów, ikona obrony, oddech przed Apostołem, kadr kinowy, rzadsze potyczki w lochach, poprawki błędów.'},
   {v:'Pieśń I',t:'Narodziny pieśni',d:'Opowieść zemsty naznaczonego najemnika: siedem krain, pięciu bossów, trzech bohaterów, techniki za wigor, SZAŁ berserka, Uwaga Zasłony nocą, pieśni o czynach, minimapa.'},
