@@ -2422,6 +2422,47 @@ function loadGame(slot){
 }
 const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'g '+(m<10?'0':'')+m+'m';};
 
+//================ GLOBALNA TABELA ONLINE (Supabase) ================
+// Wklejone po założeniu darmowego projektu — puste = tryb tylko lokalny.
+const SUPA_URL='';   // np. https://abcd.supabase.co
+const SUPA_KEY='';   // klucz "anon public"
+const supaOn=()=>SUPA_URL&&SUPA_KEY;
+function playerName(){
+  let n=localStorage.getItem('bloodmark_name');
+  if(!n){
+    try{n=(window.prompt('Pod jakim imieniem zapisać Cię w Kronice Sławy?','Najemnik')||'').trim();}catch(e){n='';}
+    n=(n||'Najemnik').slice(0,16);
+    localStorage.setItem('bloodmark_name',n);
+  }
+  return n;
+}
+let _lastSubmit=0;
+function submitGlobal(force){
+  if(!supaOn()||!G.party.length||!G.runId)return;
+  const now=Date.now();
+  if(!force&&now-_lastSubmit<90000)return; // nie spamuj sieci
+  _lastSubmit=now;
+  const kills=Object.values((G.counters&&G.counters.kills)||{}).reduce((a,b)=>a+b,0);
+  const level=Math.max(...G.party.map(h=>h.level));
+  const row={run:String(G.runId),name:playerName(),time:Math.round(G.playtime),kills,level,chapter:G.chapter};
+  fetch(SUPA_URL+'/rest/v1/scores?on_conflict=run',{
+    method:'POST',
+    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+    body:JSON.stringify(row)
+  }).catch(()=>{});
+}
+const globalCache={};      // key -> tablica wyników
+const globalState={};      // key -> 'loading'|'ok'|'err'
+function fetchGlobal(key){
+  if(!supaOn()){globalState[key]='err';return;}
+  if(globalState[key]==='loading')return;
+  globalState[key]='loading';
+  fetch(SUPA_URL+'/rest/v1/scores?select=name,time,kills,level,chapter&order='+key+'.desc&limit=10',{
+    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+  }).then(r=>r.json()).then(d=>{globalCache[key]=Array.isArray(d)?d:[];globalState[key]='ok';})
+    .catch(()=>{globalState[key]='err';});
+}
+
 //================ KRONIKA SŁAWY (lokalna tabela najlepszych) ================
 const RECORDS_KEY='bloodmark_records';
 function loadRecords(){try{const s=localStorage.getItem(RECORDS_KEY);return s?JSON.parse(s):[];}catch(e){return[];}}
@@ -2437,6 +2478,7 @@ function recordRun(){
   // utrzymujemy tylko najlepsze 40 wg czasu, by nie puchło
   arr.sort((a,b)=>b.time-a.time);if(arr.length>40)arr=arr.slice(0,40);
   try{localStorage.setItem(RECORDS_KEY,JSON.stringify(arr));}catch(e){}
+  submitGlobal(false);
 }
 function topRecords(key,n=8){return loadRecords().slice().sort((a,b)=>(b[key]||0)-(a[key]||0)).slice(0,n);}
 
@@ -2853,9 +2895,12 @@ const TitleScene={
       return;
     }
     if(this.mode==='records'){
+      const cols=['time','kills','level'];
       if(a==='cancel'){this.mode='main';AudioSys.sfx('cancel');return;}
       if(a==='left'){this.rcat=(this.rcat+2)%3;AudioSys.sfx('cursor');}
       if(a==='right'||a==='ok'){this.rcat=(this.rcat+1)%3;AudioSys.sfx('cursor');}
+      if((a==='up'||a==='down')&&supaOn()){this.rscope=this.rscope==='global'?'local':'global';AudioSys.sfx('cursor');}
+      if(this.rscope==='global')fetchGlobal(cols[this.rcat]);
       return;
     }
     const n=4;
@@ -2865,7 +2910,7 @@ const TitleScene={
       AudioSys.sfx('confirm');
       if(this.i===0)fadeTo(()=>newGame());
       else if(this.i===1){this.mode='load';this.si=0;}
-      else if(this.i===2){this.mode='records';this.rcat=0;}
+      else if(this.i===2){this.mode='records';this.rcat=0;this.rscope=supaOn()?'global':'local';if(supaOn())fetchGlobal('time');}
       else pushScene(new MenuScene2Opts());
     }
   },
@@ -2904,19 +2949,28 @@ const TitleScene={
         ['kills','Najwięcej zabójstw',r=>(r.kills||0)+' ubitych'],
         ['level',  'Najwyższy poziom',r=>'poz. '+(r.level||1)]];
       const[key,title,fmt]=cats[this.rcat];
-      panel(W/2-150,128,300,128);
-      txt('◂  KRONIKA SŁAWY  ▸',W/2,136,'#c9a35a',10,'center');
-      txt(title,W/2,150,'#e8dcc0',8,'center');
-      ctx.fillStyle='#8a7142';ctx.fillRect(W/2-130,162,260,1);
-      const list=topRecords(key,7);
-      if(!list.length)txt('Karta pusta. Najpierw zapisz albo dokończ pieśń.',W/2,200,'#6e6456',8,'center');
+      const glob=this.rscope==='global'&&supaOn();
+      panel(W/2-150,124,300,134);
+      txt('◂  KRONIKA SŁAWY  ▸',W/2,132,'#c9a35a',10,'center');
+      txt(title,W/2,146,'#e8dcc0',8,'center');
+      txt(glob?'— globalna —':(supaOn()?'— lokalna —':'— lokalna (globalna: wkrótce) —'),W/2,157,glob?'#8ad07a':'#8d8270',7,'center');
+      ctx.fillStyle='#8a7142';ctx.fillRect(W/2-130,166,260,1);
+      let list,loading=false;
+      if(glob){
+        if(globalState[key]==='loading'||globalState[key]===undefined){loading=true;fetchGlobal(key);}
+        list=(globalCache[key]||[]).slice(0,7);
+        if(globalState[key]==='err'){txt('Brak połączenia z Kroniką globalną.',W/2,200,'#b8453a',7,'center');list=[];}
+      } else list=topRecords(key,7);
+      if(loading)txt('Wczytywanie...',W/2,200,'#8d8270',8,'center');
+      else if(!list.length&&globalState[key]!=='err')txt(glob?'Globalna karta pusta — bądź pierwszy!':'Karta pusta. Zapisz albo dokończ pieśń.',W/2,200,'#6e6456',8,'center');
       list.forEach((r,i)=>{
-        const y=168+i*12,me=r.id===G.runId,medal=i===0?'#f0d050':(i===1?'#c8c8d0':(i===2?'#c08a4a':'#9a8f7c'));
-        txt((i+1)+'.',W/2-130,y,medal,7);
-        txt('Najemnik — '+(r.chapter||'?')+'  ['+r.stamp+']',W/2-116,y,me?'#f0d9a3':'#b8ad98',7);
-        txt(fmt(r),W/2+128,y,medal,7,'right');
+        const y=172+i*11,me=!glob&&r.id===G.runId,medal=i===0?'#f0d050':(i===1?'#c8c8d0':(i===2?'#c08a4a':'#9a8f7c'));
+        txt((i+1)+'.',W/2-132,y,medal,7);
+        const who=(r.name||'Najemnik')+' — '+(r.chapter||'?')+(r.stamp?'  ['+r.stamp+']':'');
+        txt(who,W/2-118,y,me?'#f0d9a3':'#b8ad98',7);
+        txt(fmt(r),W/2+130,y,medal,7,'right');
       });
-      txt('◂ ▸ kategoria    X — wstecz',W/2,H-30,'#5e5648',7,'center');
+      txt('◂ ▸ kategoria'+(supaOn()?'    ▲▼ globalna/lokalna':'')+'    X — wstecz',W/2,H-28,'#5e5648',7,'center');
     } else {
       panel(W/2-110,146,220,102);
       txt('Wczytaj kronikę:',W/2,154,'#c9a35a',8,'center');
@@ -2939,7 +2993,7 @@ class MenuScene2Opts extends MenuScene{
 //================ KONIEC GRY / EPILOG ================
 const GameOverScene={
   i:0,
-  enter(){recordRun();AudioSys.stopMusic();AudioSys.sfx('death');FX.fadeDir=-1;FX.fadeA=.6;},
+  enter(){recordRun();submitGlobal(true);AudioSys.stopMusic();AudioSys.sfx('death');FX.fadeDir=-1;FX.fadeA=.6;},
   key(a){
     if(a==='up'||a==='down'){this.i=1-this.i;AudioSys.sfx('cursor');}
     if(a==='ok'){
@@ -2963,7 +3017,7 @@ const GameOverScene={
 };
 let endingPages=[],endingIdx=0;
 function startEnding(kind){
-  G.flags.finale_done=true;G.quests.glowny=5;recordRun();
+  G.flags.finale_done=true;G.quests.glowny=5;recordRun();submitGlobal(true);
   unlockAchv('zemsta');unlockAchv(kind==='mercy'?'milosierdzie':'kat');
   endingIdx=0;
   const wspolne=['Zamek Vorlec płonął do rana. Nikt nie gasił.','Wieść poniosła się traktami szybciej niż popiół: hrabia nie żyje, a to, co nosił pod skórą, zdechło razem z nim.'];
