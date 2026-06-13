@@ -2424,8 +2424,8 @@ const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'g '
 
 //================ GLOBALNA TABELA ONLINE (Supabase) ================
 // Wklejone po założeniu darmowego projektu — puste = tryb tylko lokalny.
-const SUPA_URL='';   // np. https://abcd.supabase.co
-const SUPA_KEY='';   // klucz "anon public"
+const SUPA_URL='https://eocttdfcsjnnldkkvdcy.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvY3R0ZGZjc2pubmxka2t2ZGN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMzg3NzQsImV4cCI6MjA5NjkxNDc3NH0.nxy5EYny3D-vbMLzhaw8CAgix1HkdXZJYNn0xoafVQ8';
 const supaOn=()=>SUPA_URL&&SUPA_KEY;
 function playerName(){
   let n=localStorage.getItem('bloodmark_name');
