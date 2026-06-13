@@ -210,7 +210,7 @@ const AudioSys=(()=>{
 const SAVE_KEY='bloodmark_save_',OPTS_KEY='bloodmark_opts',ACHV_KEY='bloodmark_achv';
 const G={
   party:[],inv:{},gold:0,flags:{},bestiary:{},achv:{},counters:{},
-  mapId:null,px:5,py:5,dir:'down',dread:0,weather:'clear',
+  mapId:null,px:5,py:5,dir:'down',dread:0,weather:'clear',runId:0,
   playtime:0,dayT:0.3,chapter:'Prolog',
   opts:{music:.7,sfx:.8,textSpeed:1,shake:true},
 };
@@ -1885,8 +1885,9 @@ const Field={
         ctx.restore();
       }
     }
-    // HUD
-    if(this.banner&&this.banner.t>0){
+    // HUD — teksty rysują się tylko, gdy nic nie przykrywa pola (menu/dialog/sklep)
+    const isTop=topScene()===Field;
+    if(isTop&&this.banner&&this.banner.t>0){
       const a=Math.min(1,this.banner.t);
       ctx.globalAlpha=a;octx.globalAlpha=a;
       txt(this.banner.text,W/2,16,'#c9a35a',12,'center',true,'#0a0705');
@@ -1929,14 +1930,16 @@ const Field={
         ctx.globalAlpha=pulse*mA;
         bar(W-70,dy+4,50,7,G.dread/100,'#a83a52','#5e1a2a');
         ctx.globalAlpha=mA;
-        octx.globalAlpha=mA;
-        txt('Zasłona patrzy',W-84,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
-        octx.globalAlpha=1;
+        if(isTop){
+          octx.globalAlpha=mA;
+          txt('Zasłona patrzy',W-84,dy+19,G.dread>70?'#e85a4a':'#8d8270',6);
+          octx.globalAlpha=1;
+        }
       }
       ctx.restore();
     }
     // dyskretny cel wyprawy + postęp poziomu (lewy dolny róg)
-    {
+    if(isTop){
       const goal=hudGoal();
       if(goal){
         ctx.globalAlpha=.72;octx.globalAlpha=.72;
@@ -1949,7 +1952,7 @@ const Field={
         ctx.globalAlpha=1;octx.globalAlpha=1;
       }
     }
-    drawToasts();
+    if(isTop)drawToasts();
   },
 };
 function drawToasts(){
@@ -2397,9 +2400,9 @@ const QUESTS={
 function saveGame(slot){
   const d={v:1,party:G.party.map(h=>({id:h.id,level:h.level,xp:h.xp,hp:h.hp,sp:h.sp,equip:h.equip,upg:h.upg})),
     inv:G.inv,gold:G.gold,flags:G.flags,bestiary:G.bestiary,quests:G.quests,counters:G.counters,dread:G.dread,weather:G.weather,
-    mapId:G.mapId,px:G.px,py:G.py,dir:G.dir,dayT:G.dayT,playtime:G.playtime,chapter:G.chapter,
+    mapId:G.mapId,px:G.px,py:G.py,dir:G.dir,dayT:G.dayT,playtime:G.playtime,chapter:G.chapter,runId:G.runId,
     stamp:new Date().toLocaleString('pl-PL')};
-  try{localStorage.setItem(SAVE_KEY+slot,JSON.stringify(d));return true;}catch(e){return false;}
+  try{localStorage.setItem(SAVE_KEY+slot,JSON.stringify(d));recordRun();return true;}catch(e){return false;}
 }
 function saveInfo(slot){
   try{const s=localStorage.getItem(SAVE_KEY+slot);if(!s)return null;return JSON.parse(s);}catch(e){return null;}
@@ -2409,12 +2412,30 @@ function loadGame(slot){
   G.party=d.party.map(p=>{const h=mkHero(p.id,p.level);h.xp=p.xp;h.equip=p.equip;if(p.upg)h.upg=p.upg;h.hp=p.hp;h.sp=p.sp;return h;});
   G.inv=d.inv;G.gold=d.gold;G.flags=d.flags;G.bestiary=d.bestiary;G.quests=d.quests;
   G.counters=d.counters||{};G.dread=d.dread||0;
-  G.dayT=d.dayT;G.playtime=d.playtime;G.chapter=d.chapter||'';
+  G.dayT=d.dayT;G.playtime=d.playtime;G.chapter=d.chapter||'';G.runId=d.runId||Date.now();
   setScene(Field);loadMap(d.mapId,d.px,d.py,d.dir);
   if(d.weather)G.weather=d.weather;
   return true;
 }
 const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'g '+(m<10?'0':'')+m+'m';};
+
+//================ KRONIKA SŁAWY (lokalna tabela najlepszych) ================
+const RECORDS_KEY='bloodmark_records';
+function loadRecords(){try{const s=localStorage.getItem(RECORDS_KEY);return s?JSON.parse(s):[];}catch(e){return[];}}
+function recordRun(){
+  if(!G.party.length||!G.runId)return;
+  const kills=Object.values((G.counters&&G.counters.kills)||{}).reduce((a,b)=>a+b,0);
+  const level=Math.max(...G.party.map(h=>h.level));
+  let arr=loadRecords();
+  let e=arr.find(r=>r.id===G.runId);
+  if(!e){e={id:G.runId};arr.push(e);}
+  e.time=Math.round(G.playtime);e.kills=kills;e.level=level;
+  e.chapter=G.chapter;e.stamp=new Date().toLocaleDateString('pl-PL');
+  // utrzymujemy tylko najlepsze 40 wg czasu, by nie puchło
+  arr.sort((a,b)=>b.time-a.time);if(arr.length>40)arr=arr.slice(0,40);
+  try{localStorage.setItem(RECORDS_KEY,JSON.stringify(arr));}catch(e){}
+}
+function topRecords(key,n=8){return loadRecords().slice().sort((a,b)=>(b[key]||0)-(a[key]||0)).slice(0,n);}
 
 //================ MENU PAUZY ================
 const STAT_LBL={hp:'ŻYW',sp:'WGR',atk:'ATK',def:'OBR',dex:'ZRC',spd:'SZB'};
@@ -2828,13 +2849,20 @@ const TitleScene={
       if(a==='ok'){if(saveInfo(this.si)){AudioSys.sfx('confirm');fadeTo(()=>loadGame(this.si));}else AudioSys.sfx('cancel');}
       return;
     }
-    const n=3;
+    if(this.mode==='records'){
+      if(a==='cancel'){this.mode='main';AudioSys.sfx('cancel');return;}
+      if(a==='left'){this.rcat=(this.rcat+2)%3;AudioSys.sfx('cursor');}
+      if(a==='right'||a==='ok'){this.rcat=(this.rcat+1)%3;AudioSys.sfx('cursor');}
+      return;
+    }
+    const n=4;
     if(a==='up'){this.i=(this.i+n-1)%n;AudioSys.sfx('cursor');}
     if(a==='down'){this.i=(this.i+1)%n;AudioSys.sfx('cursor');}
     if(a==='ok'){
       AudioSys.sfx('confirm');
       if(this.i===0)fadeTo(()=>newGame());
       else if(this.i===1){this.mode='load';this.si=0;}
+      else if(this.i===2){this.mode='records';this.rcat=0;}
       else pushScene(new MenuScene2Opts());
     }
   },
@@ -2863,11 +2891,29 @@ const TitleScene={
     ctx.fillStyle='#b8453a';ctx.fillRect(W/2-78,ty+47,156,1);
     txt('— Pieśń Czarnego Najemnika —',W/2,ty+54,'#9a8f7c',9,'center');
     if(this.mode==='main'){
-      ['Nowa wyprawa','Wczytaj kronikę','Opcje'].forEach((s,i)=>{
-        const y=170+i*18;
-        if(i===this.i){txt('▸',W/2-72,y,'#c9a35a',9);txt('◂',W/2+66,y,'#c9a35a',9);}
+      ['Nowa wyprawa','Wczytaj kronikę','Kronika Sławy','Opcje'].forEach((s,i)=>{
+        const y=162+i*17;
+        if(i===this.i){txt('▸',W/2-74,y,'#c9a35a',9);txt('◂',W/2+68,y,'#c9a35a',9);}
         txt(s,W/2,y,i===this.i?'#f0d9a3':'#9a8f7c',9,'center');
       });
+    } else if(this.mode==='records'){
+      const cats=[['time','Najwięcej czasu w grze',r=>fmtTime(r.time||0)],
+        ['kills','Najwięcej zabójstw',r=>(r.kills||0)+' ubitych'],
+        ['level',  'Najwyższy poziom',r=>'poz. '+(r.level||1)]];
+      const[key,title,fmt]=cats[this.rcat];
+      panel(W/2-150,128,300,128);
+      txt('◂  KRONIKA SŁAWY  ▸',W/2,136,'#c9a35a',10,'center');
+      txt(title,W/2,150,'#e8dcc0',8,'center');
+      ctx.fillStyle='#8a7142';ctx.fillRect(W/2-130,162,260,1);
+      const list=topRecords(key,7);
+      if(!list.length)txt('Karta pusta. Najpierw zapisz albo dokończ pieśń.',W/2,200,'#6e6456',8,'center');
+      list.forEach((r,i)=>{
+        const y=168+i*12,me=r.id===G.runId,medal=i===0?'#f0d050':(i===1?'#c8c8d0':(i===2?'#c08a4a':'#9a8f7c'));
+        txt((i+1)+'.',W/2-130,y,medal,7);
+        txt('Najemnik — '+(r.chapter||'?')+'  ['+r.stamp+']',W/2-116,y,me?'#f0d9a3':'#b8ad98',7);
+        txt(fmt(r),W/2+128,y,medal,7,'right');
+      });
+      txt('◂ ▸ kategoria    X — wstecz',W/2,H-30,'#5e5648',7,'center');
     } else {
       panel(W/2-110,146,220,102);
       txt('Wczytaj kronikę:',W/2,154,'#c9a35a',8,'center');
@@ -2883,14 +2929,14 @@ const TitleScene={
   },
 };
 class MenuScene2Opts extends MenuScene{
-  constructor(){super();this.tabs=['Opcje'];this.tab=0;this.focus='content';}
+  constructor(){super();this.tabs=['Opcje'];this.tab=0;this.focus='content';this.overlay=false;} // pełny ekran — nic spod spodu nie prześwituje
   key(a){if(a==='cancel'){popScene();return;}super.key(a);}
 }
 
 //================ KONIEC GRY / EPILOG ================
 const GameOverScene={
   i:0,
-  enter(){AudioSys.stopMusic();AudioSys.sfx('death');FX.fadeDir=-1;FX.fadeA=.6;},
+  enter(){recordRun();AudioSys.stopMusic();AudioSys.sfx('death');FX.fadeDir=-1;FX.fadeA=.6;},
   key(a){
     if(a==='up'||a==='down'){this.i=1-this.i;AudioSys.sfx('cursor');}
     if(a==='ok'){
@@ -2914,7 +2960,7 @@ const GameOverScene={
 };
 let endingPages=[],endingIdx=0;
 function startEnding(kind){
-  G.flags.finale_done=true;G.quests.glowny=5;
+  G.flags.finale_done=true;G.quests.glowny=5;recordRun();
   unlockAchv('zemsta');unlockAchv(kind==='mercy'?'milosierdzie':'kat');
   endingIdx=0;
   const wspolne=['Zamek Vorlec płonął do rana. Nikt nie gasił.','Wieść poniosła się traktami szybciej niż popiół: hrabia nie żyje, a to, co nosił pod skórą, zdechło razem z nim.'];
@@ -3894,7 +3940,7 @@ function newGame(){
   b.hp=hstat(b,'hp');b.sp=hstat(b,'sp');
   G.inv={bandaz:3,gulasz:1,ziola:1};G.gold=60;
   G.flags={};G.bestiary={};G.quests={};G.counters={};G.dread=0;
-  G.dayT=0.22;G.playtime=0;G.chapter='Pieśń I';
+  G.dayT=0.22;G.playtime=0;G.chapter='Pieśń I';G.runId=Date.now();
   setScene(Field);loadMap('wioska',12,12,'down');
   runScript(SCRIPTS.prolog());
 }
@@ -4850,6 +4896,7 @@ function hudGoal(){
 //================ KRONIKA AKTUALIZACJI ================
 const GAME_VER='Pieśń III';
 const CHANGELOG=[
+  {v:'Pieśń III+',t:'Kronika Sławy',d:'Tabela najlepszych przebiegów (Kronika Sławy na ekranie tytułowym): najwięcej czasu, najwięcej zabójstw, najwyższy poziom. Poprawka nakładania się ekranu Opcji wywołanego z tytułu.'},
   {v:'Pieśń III',t:'Krew i srebro',d:'Mira w rękach bandytów — okup 150 srebra. Naznaczeni wrogowie ✦, złote i krwawe łupy, materiały z łowów i hartowanie oręża w kuźni (+1…+5). Cel wyprawy na ekranie, statystyki pieśni. Sen w karczmie kończy się świtem (nowa scena) i nie cuci powalonych — od tego są sole. Potyczki o połowę rzadsze. Pokonani bossowie osuwają się i krwawią. Po finale tryb swobodny. Autozapis. Tabliczki z czaszką ostrzegają przed legowiskami. Minimapa staje się przejrzysta, gdy postać wchodzi pod nią. Rekrutacja przez pojedynek: Mirę trzeba pokonać w kręgu (potem okup 150), Wita w sparingu (zaliczka 200). Potyczki znacznie rzadsze, naznaczeni ostrożniej.'},
   {v:'Pieśń II',t:'Świat rośnie',d:'Cztery nowe krainy: Pobojowisko Stu Chorągwi, Przystań Maruderów z gotyckim kościołem i domami z muru pruskiego, Wybrzeże Wraków i Stare Kopalnie z Matką Gniazda. Pogoda (deszcz, mgła), kroniki łowów w bestiariuszu, zadania „Zaginiona chorągiew" i „Relikwia z głębin", dwunastu nowych wrogów.'},
   {v:'Szlif',t:'Ostrzenie klingi',d:'Klatki ataku wrogów, ikona obrony, oddech przed Apostołem, kadr kinowy, rzadsze potyczki w lochach, poprawki błędów.'},
