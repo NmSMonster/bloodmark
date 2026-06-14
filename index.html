@@ -2019,7 +2019,8 @@ function enemySprite(d){
     klaun:klaunPix,marionetka:marionetkaPix,pajac:pajacPix,baloniarz:baloniarzPix,big_jack:bigJackPix,
     werewolf:werewolfPix,zmora:zmoraPix,dyniokrol:dyniokrolPix,gnijacy_bies:gnijacyBiesPix,mech_szczur:mechSzczurPix,
     zloty_praojciec:zlatyPraojciecPix,koszmar:koszmarnPix,kukielkarz:kukielkarzPix,
-    jester:jesterPix,trybik_szczur:trybikSzczurPix,modrak:modrakPix,balwan:balwanPix,wirus:wirusPix,chipper:chipperPix};
+    jester:jesterPix,trybik_szczur:trybikSzczurPix,modrak:modrakPix,balwan:balwanPix,wirus:wirusPix,chipper:chipperPix,
+    gangster:typeof gangsterPix!=='undefined'?gangsterPix:beastPix};
   let frames;
   if(d.gen==='human'){
     const bs=[battlePix(d.look,'idle',0).mirrored(),battlePix(d.look,'idle',1).mirrored()];
@@ -2029,7 +2030,7 @@ function enemySprite(d){
   }
   const fn=gens[d.gen];
   frames=[fn(d,0).toCanvas(),fn(d,1).toCanvas()];
-  if(d.gen==='gold_skeleton'||d.gen==='scarecrow'||d.gen==='big_jack'||d.gen==='werewolf'||d.gen==='zmora'||d.gen==='dyniokrol'||d.gen==='gnijacy_bies'||d.gen==='mech_szczur'||d.gen==='zloty_praojciec'||d.gen==='koszmar'||d.gen==='kukielkarz'||d.gen==='jester'||d.gen==='trybik_szczur'||d.gen==='modrak'||d.gen==='balwan'||d.gen==='wirus'||d.gen==='chipper'){
+  if(d.gen==='gold_skeleton'||d.gen==='scarecrow'||d.gen==='big_jack'||d.gen==='werewolf'||d.gen==='zmora'||d.gen==='dyniokrol'||d.gen==='gnijacy_bies'||d.gen==='mech_szczur'||d.gen==='zloty_praojciec'||d.gen==='koszmar'||d.gen==='kukielkarz'||d.gen==='jester'||d.gen==='trybik_szczur'||d.gen==='modrak'||d.gen==='balwan'||d.gen==='wirus'||d.gen==='chipper'||d.gen==='gangster'){
     const attack=[fn(Object.assign({},d,{attack:true}),0).toCanvas(),fn(Object.assign({},d,{attack:true}),1).toCanvas()];
     return{frames,attack,flash:whiteMask(frames[0]),w:frames[0].width,h:frames[0].height,scale:d.scale||2};
   }
@@ -2723,6 +2724,7 @@ function getFog(){
 }
 function loadMap(id,tx,ty,dir,opts={}){
   const m=MAPS[id];G.mapId=id;G.px=tx;G.py=ty;if(dir)G.dir=dir;
+  if(typeof ensureLimitedRift==='function')ensureLimitedRift();  // limitowani bossowie co 3h w różnych miejscach
   MC=buildMap(m);
   Field.pl={fx:tx,fy:ty,moving:false,mt:0,step:0,sinceEnc:0};
   Field.banner={t:3,text:m.name};
@@ -2986,6 +2988,9 @@ const Field={
     }
     // byty sortowane po Y
     const ents=[];
+    // kafelki-portale (drzewo migocze przezroczystością — wejście do innego świata)
+    let pulsePortals=null;
+    for(const o of MC.objs)if(o.type==='holdPortal'&&o.pulse&&objVisible(o)){(pulsePortals||(pulsePortals=new Set())).add(o.x+','+o.y);}
     const x0=Math.floor(cx/16)-2,x1=Math.ceil((cx+W)/16)+2,y0=Math.floor(cy/16)-2,y1=Math.ceil((cy+H)/16)+3;
     for(let y=Math.max(0,y0);y<Math.min(MC.mh,y1);y++)for(let x=Math.max(0,x0);x<Math.min(MC.mw,x1);x++){
       const ch=MC.grid[y][x];let pr=null;
@@ -3001,7 +3006,22 @@ const Field={
       else if(ch==='R')pr=m.snow?IMG.props.snow_rock:IMG.props.boulder;
       else if(ch==='G')pr=IMG.props['grave'+((x*5+y*7)%2)];
       else if(ch==='F')pr=IMG.props.fire[Math.floor(gTime*7)%3];
-      if(pr)ents.push({y:y*16+16,draw:()=>ctx.drawImage(pr.cv,x*16+8-(pr.w>>1)-cx,(y+1)*16-pr.h-cy)});
+      if(pr){
+        const tx=x,ty=y,tpr=pr;
+        if(pulsePortals&&pulsePortals.has(tx+','+ty)){
+          // portal: co ~pół sekundy coraz bardziej przezroczyste + fioletowa poświata
+          ents.push({y:ty*16+16,draw:()=>{
+            const a=.25+.55*(.5+.5*Math.sin(gTime*Math.PI*2));   // okres 1s, wyraźne pulsowanie
+            const px=tx*16+8-(tpr.w>>1)-cx,py=(ty+1)*16-tpr.h-cy;
+            ctx.save();
+            const gw=ctx.createRadialGradient(tx*16+8-cx,(ty+1)*16-tpr.h/2-cy,2,tx*16+8-cx,(ty+1)*16-tpr.h/2-cy,16);
+            gw.addColorStop(0,'rgba(154,90,216,'+(.5*(1-a)).toFixed(3)+')');gw.addColorStop(1,'rgba(154,90,216,0)');
+            ctx.fillStyle=gw;ctx.fillRect(tx*16+8-16-cx,(ty+1)*16-tpr.h-8-cy,32,tpr.h+16);
+            ctx.globalAlpha=a;ctx.drawImage(tpr.cv,px,py);
+            ctx.restore();
+          }});
+        } else ents.push({y:ty*16+16,draw:()=>ctx.drawImage(tpr.cv,tx*16+8-(tpr.w>>1)-cx,(ty+1)*16-tpr.h-cy)});
+      }
     }
     for(const o of MC.objs){
       if(!objVisible(o))continue;
@@ -3019,6 +3039,15 @@ const Field={
             ctx.fillStyle='#2a2008';ctx.beginPath();ctx.arc(mx,my,6.5,0,7);ctx.fill();
             ctx.fillStyle='#ffd83a';ctx.beginPath();ctx.arc(mx,my,5.3,0,7);ctx.fill();
             ctx.fillStyle='#2a2008';ctx.fillRect(mx-1,my-4,2,5);ctx.fillRect(mx-1,my+2,2,2);
+          }
+          if(o.p==='kostun_npc'){ // pływający napis nad Kostunem
+            const label='Event Quests';
+            const lx=o.x*16+8-cx, ly=(o.y+1)*16-av.h-cy-9+Math.round(Math.sin(gTime*3)*1.2);
+            const lw=txtW(label,8)+10;
+            ctx.fillStyle='rgba(18,8,28,.8)';ctx.fillRect(lx-lw/2,ly-7,lw,13);
+            const glow=(.45+.35*Math.sin(gTime*4)).toFixed(2);
+            ctx.fillStyle='rgba(154,90,216,'+glow+')';ctx.fillRect(lx-lw/2,ly-7,lw,1);ctx.fillRect(lx-lw/2,ly+5,lw,1);
+            txt(label,lx,ly-5,(Math.floor(gTime*3)%2?'#e6c0ff':'#c08ad8'),8,'center');
           }
         }});
       } else if(o.type==='chest'){
@@ -3252,7 +3281,9 @@ class DialogScene{
       if(st.join){const h=mkHero(st.join,Math.max(1,(G.party[0]?G.party[0].level:1)-0));
         if(st.join==='mira'){h.equip.weapon='palasz_stary';h.equip.armor='przeszywanica';}
         if(st.join==='wit'){h.equip.weapon='noze_mysl';h.equip.armor='przeszywanica';}
-        G.party.push(h);AudioSys.sfx('levelup');pushToast(HEROES[st.join].name+' dołącza do drużyny!','heart');}
+        if(st.join==='kostun'){h.equip.weapon='kosa_kostuna';h.equip.armor='calun_pancerz';}
+        if(st.join==='grief'){h.equip.weapon='dlon_fortuny';}
+        G.party.push(h);if(typeof rebuildHeroSprites==='function')rebuildHeroSprites(h);AudioSys.sfx('levelup');pushToast(HEROES[st.join].name+' dołącza do drużyny!','heart');}
       if(st.heal){
         // sen leczy tylko żywych — powaleni wymagają soli trzeźwiących
         for(const h of G.party){if(h.hp>0){h.hp=hstat(h,'hp');h.sp=hstat(h,'sp');h.status={};}}
@@ -3266,6 +3297,7 @@ class DialogScene{
       if(st.music)AudioSys.music(st.music);
       if(st.quest){G.quests[st.quest]=st.stage;pushToast('Dziennik: '+QUESTS[st.quest].name,'scroll');AudioSys.sfx('confirm');}
       if(st.shop){pushScene(new ShopScene(st.shop));return;}
+      if(st.board==='kostun'){popScene();pushScene(new KostunScene());return;}
       if(st.forge){pushScene(new ForgeScene());return;}
       if(st.minigame){
         const self=this;
@@ -3277,7 +3309,11 @@ class DialogScene{
             onCancel:()=>popScene()
           }));
         } else if(st.minigame==='slot'){
-          pushScene(new SlotScene(()=>self.advance()));
+          pushScene(new SlotScene(()=>self.advance(),st.slotTheme&&typeof CASINO_SLOTS!=='undefined'?CASINO_SLOTS[st.slotTheme]:null));
+        } else if(st.minigame==='blackjack'){
+          pushScene(new BlackJackScene(()=>self.advance()));
+        } else if(st.minigame==='roulette'){
+          pushScene(new RouletteScene(()=>self.advance()));
         } else if(st.minigame==='fish'){
           pushScene(new FishScene(()=>self.advance()));
         } else {
@@ -3593,6 +3629,8 @@ const MAPS={
     {type:'npc',npc:'ranny',x:9,y:8,dlg:'ranny',static:true},
     {type:'chest',id:'w1',x:2,y:17,item:'bandaz',n:2},
     {type:'chest',id:'w2',x:28,y:2,gold:30},
+    {type:'holdPortal',x:22,y:19,to:'croydon',tx:12,ty:9,dir:'up',pulse:true,text:'Kora drzewa staje sie przezroczysta... za nia slychac wrzawe placu zabaw. Croydon Playground.'},
+    {type:'sign',x:22,y:18,text:'To drzewo migocze i blednie co chwile. Przyloz dlon i przytrzymaj — przejdziesz do Croydon Playground.'},
     {type:'exit',x:29,y:10,to:'las',tx:1,ty:11,dir:'right'},
     {type:'exit',x:29,y:11,to:'las',tx:1,ty:11,dir:'right'},
   ]},
@@ -3872,6 +3910,7 @@ const QUESTS={
 //================ ZAPIS / ODCZYT ================
 function saveGame(slot){
   ensureBackstageSystems();
+  if(G.party.length&&!(G.flags&&G.flags.sandbox))promptSaveName(); // pierwszy zapis pyta o nazwę gracza (Arena/Gildie/Kronika)
   const d={v:1,party:G.party.map(h=>({id:h.id,level:h.level,xp:h.xp,hp:h.hp,sp:h.sp,equip:h.equip,upg:h.upg})),
     inv:G.inv,gold:G.gold,flags:G.flags,bestiary:G.bestiary,quests:G.quests,counters:G.counters,dread:G.dread,weather:G.weather,
     relics:G.relics,helpers:G.helpers,arena:G.arena,guild:G.guild,
@@ -3891,8 +3930,10 @@ function loadGame(slot){
   G.arena=d.arena;G.guild=(d.guild!==undefined?d.guild:null);ensureBackstageSystems();
   G.counters=d.counters||{};G.dread=d.dread||0;
   G.dayT=d.dayT;G.playtime=d.playtime;G.chapter=d.chapter||'';G.runId=d.runId||Date.now();
+  promptSaveName(); // dopytaj o nazwę tylko jeśli stary zapis jej nie miał (bez nagabywania przy każdym wczytaniu)
   setScene(Field);loadMap(d.mapId,d.px,d.py,d.dir);
   if(d.weather)G.weather=d.weather;
+  submitGlobal(true);publishArenaSnapshot(true);
   return true;
 }
 const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'g '+(m<10?'0':'')+m+'m';};
@@ -3957,6 +3998,24 @@ function playerName(ask=true){
   }
   return n||(ask?'Najemnik':'');
 }
+function ensureEntryPlayerName(){
+  let n=storedPlayerName()||'Najemnik';
+  try{n=(window.prompt('Nazwa gracza do Areny i Kroniki Slawy:',n)||n).trim();}catch(e){}
+  n=cleanOnlineText(n||'Najemnik',16)||'Najemnik';
+  try{localStorage.setItem('bloodmark_name',n);}catch(e){}
+  return n;
+}
+// Jednorazowe pytanie o nazwę przy PIERWSZYM zapisie — pojawia się na Arenie, w Gildiach i Kronice Sławy.
+// Pyta tylko gdy nazwy jeszcze nie ma; przy kolejnych zapisach od razu zwraca zapamiętaną.
+function promptSaveName(){
+  const cur=storedPlayerName();
+  if(cur)return cur;
+  let n='';
+  try{n=(window.prompt('Pod jaką nazwą zapisać Twojego najemnika?\nPojawi się na Arenie, w Gildiach i Kronice Sławy:','Najemnik')||'').trim();}catch(e){n='';}
+  n=cleanOnlineText(n||'Najemnik',16)||'Najemnik';
+  try{localStorage.setItem('bloodmark_name',n);}catch(e){}
+  return n;
+}
 function supaHeaders(extra={}){
   return Object.assign({'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY},extra);
 }
@@ -4013,6 +4072,7 @@ function recordRun(opts={}){
   let e=arr.find(r=>r.id===G.runId);
   if(!e){e={id:G.runId};arr.push(e);}
   e.time=Math.round(G.playtime);e.kills=kills;e.level=level;
+  e.name=storedPlayerName()||e.name||'Najemnik';
   e.chapter=G.chapter;e.stamp=new Date().toLocaleDateString('pl-PL');
   // utrzymujemy tylko najlepsze 40 wg czasu, by nie puchło
   arr.sort((a,b)=>b.time-a.time);if(arr.length>40)arr=arr.slice(0,40);
@@ -4299,7 +4359,9 @@ class MenuScene{
           const y=cy+16+i*16;
           if(i===this.sub&&this.mode==='slots'){ctx.fillStyle='rgba(201,163,90,.12)';ctx.fillRect(x0-4,y-2,180,15);}
           txt(names[i]+':',x0,y,'#8d8270',8);
-          txt(eqName(h,sl),x0+58,y,'#d8cdb8',8);
+          const eqId=h.equip[sl];const eqLim=eqId&&ITEMS[eqId]&&ITEMS[eqId].limited;
+          txt(eqName(h,sl),x0+58,y,eqLim?'#f0d050':'#d8cdb8',8);
+          if(eqLim&&typeof drawLimitedTag==='function')drawLimitedTag(x0+150,y-1);
         });
         const ks=['atk','def','dex','spd'];
         ks.forEach((k,i)=>{txt(STAT_LBL[k]+' '+hstat(h,k),x0+(i%2)*60,cy+74+Math.floor(i/2)*13,'#b8ad98',8);});
@@ -4310,7 +4372,8 @@ class MenuScene{
           ls.forEach((id,i)=>{
             const y=52+i*15;
             if(i===this.ci){ctx.fillStyle='rgba(201,163,90,.15)';ctx.fillRect(254,y-2,190,14);}
-            txt(ITEMS[id].name,260,y,'#d8cdb8',8);
+            txt(ITEMS[id].name,260,y,ITEMS[id].limited?'#f0d050':'#d8cdb8',8);
+            if(ITEMS[id].limited&&typeof drawLimitedTag==='function')drawLimitedTag(398,y-1);
           });
           const y=52+ls.length*15;
           if(this.ci===ls.length){ctx.fillStyle='rgba(201,163,90,.15)';ctx.fillRect(254,y-2,190,14);}
@@ -4697,12 +4760,12 @@ function drawSlotSym(cx,cy,sym,blur){
   ctx.restore();
 }
 class SlotScene{
-  constructor(onDone){this.onDone=onDone;this.cost=20;this.phase='idle';this.t=0;
+  constructor(onDone,theme){this.onDone=onDone;this.theme=theme||null;this.cost=(theme&&theme.cost)||20;this.phase='idle';this.t=0;
     this.reels=[0,0,0];this.result=[0,0,0];this.stopT=[.7,1.0,1.35];this.won=null;
-    this.msg='Pociągnij dźwignię i licz na fart.';this.msgC='#d8cdb8';}
+    this.msg=(theme&&theme.intro)||'Pociągnij dźwignię i licz na fart.';this.msgC='#d8cdb8';}
   spin(){
     if(G.gold<this.cost){this.msg='Za mało srebra ('+this.cost+').';this.msgC='#e85a4a';AudioSys.sfx('cancel');return;}
-    giveGold(-this.cost);AudioSys.sfx('coin');this.phase='spin';this.t=0;this.won=null;this.msg='...';this.msgC='#d8cdb8';
+    giveGold(-this.cost);AudioSys.sfx('coin');slotSpun();this.phase='spin';this.t=0;this.won=null;this.msg='...';this.msgC='#d8cdb8';
     const S=SLOT_SYMS.length;
     if(Math.random()<0.0001)this.result=[S-1,S-1,S-1];                 // 0.01% — trzy Jokery (jackpot)
     else{const roll=Math.random();
@@ -4718,9 +4781,10 @@ class SlotScene{
     }}
   resolve(){this.phase='result';this.t=0;const[a,b,c]=this.result,S=SLOT_SYMS.length;
     if(a===S-1&&b===S-1&&c===S-1){
-      const has=G.inv.arlekin||G.party.some(h=>h.equip&&h.equip.weapon==='arlekin');
-      if(!has){addItem('arlekin');this.won=1;this.msg='✦✦ JACKPOT! ARLEKIN — Ostrze Krupiera! ✦✦';this.msgC='#f0d050';AudioSys.sfx('levelup');flash('#f0d050',.9);shake(9);}
-      else{giveGold(3000);this.won=1;this.msg='✦ Trzy Jokery! Masz już Arlekin — +3000 srebra!';this.msgC='#f0d050';AudioSys.sfx('levelup');flash('#f0d050',.7);shake(7);}
+      const prize=(this.theme&&this.theme.prize)||'arlekin';
+      const has=G.inv[prize]||G.party.some(h=>h.equip&&h.equip.weapon===prize);
+      if(!has){addItem(prize);this.won=1;this.msg='✦✦ JACKPOT! '+ITEMS[prize].name.toUpperCase()+'! ✦✦';this.msgC='#f0d050';AudioSys.sfx('levelup');flash('#f0d050',.9);shake(9);}
+      else{giveGold(3000);this.won=1;this.msg='✦ Trzy Jokery! Masz już '+ITEMS[prize].name+' — +3000 srebra!';this.msgC='#f0d050';AudioSys.sfx('levelup');flash('#f0d050',.7);shake(7);}
     } else if(a===b&&b===c){const pay=this.cost*8;giveGold(pay);this.msg='Trójka! +'+pay+' srebra!';this.msgC='#8ad07a';AudioSys.sfx('coin');flash('#e0c040',.35);}
     else if(a===b||b===c||a===c){const pay=this.cost*2;giveGold(pay);this.msg='Para. +'+pay+' srebra.';this.msgC='#c9a35a';AudioSys.sfx('coin');}
     else{this.msg='Pusto. Cyrk się śmieje.';this.msgC='#8d8270';AudioSys.sfx('cancel');}
@@ -4732,9 +4796,11 @@ class SlotScene{
   draw(){
     ctx.fillStyle='#0a0610';ctx.fillRect(0,0,W,H);
     const gr=ctx.createRadialGradient(W/2,95,20,W/2,95,210);gr.addColorStop(0,'rgba(90,24,34,.45)');gr.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
-    panel(W/2-150,12,300,26);txt('JEDNORĘKI BANDYTA',W/2-68,18,'#c9a35a',11);txt('Srebro: '+G.gold,W/2+58,20,'#e0c040',8);
+    panel(W/2-150,12,300,26);txt((this.theme&&this.theme.title)||'JEDNORĘKI BANDYTA',W/2-138,18,'#c9a35a',10);txt('Srebro: '+G.gold,W/2+58,20,'#e0c040',8);
+    if(this.theme&&this.theme.prize)txt('Unikat: '+ITEMS[this.theme.prize].name+'  (0.01%)',W/2,44,(Math.floor(gTime*3)%2?'#f0d050':'#c9a35a'),7,'center');
     const mx=W/2-72,my=54,mw=144,mh=116;
-    ctx.fillStyle='#a02424';ctx.fillRect(mx,my,mw,mh);ctx.fillStyle='#7a1818';ctx.fillRect(mx,my+mh-12,mw,12);
+    const bodyC=(this.theme&&this.theme.color)||'#a02424',bodyD=(this.theme&&this.theme.colorD)||'#7a1818';
+    ctx.fillStyle=bodyC;ctx.fillRect(mx,my,mw,mh);ctx.fillStyle=bodyD;ctx.fillRect(mx,my+mh-12,mw,12);
     ctx.fillStyle='#e0b830';ctx.fillRect(mx+8,my+6,mw-16,5);
     for(let i=0;i<3;i++){const rx=mx+18+i*42,ry=my+26,rw=34,rh=48;
       ctx.fillStyle='#f0ece0';ctx.fillRect(rx,ry,rw,rh);ctx.fillStyle='#cfc8b8';ctx.fillRect(rx,ry,rw,2);ctx.fillRect(rx,ry+rh-2,rw,2);
@@ -5110,6 +5176,8 @@ class BattleScene{
       3:[[322,72],[352,104],[326,138]],
       4:[[300,80],[348,72],[316,124],[362,118]],
       5:[[292,70],[344,62],[300,108],[350,100],[322,138]],
+      6:[[286,64],[340,56],[292,100],[346,92],[298,138],[352,130]],
+      7:[[284,58],[336,50],[362,86],[290,98],[342,92],[300,136],[352,128]],
     }[G.party.length]||[[336,100]];
     this.heroes=G.party.map((h,i)=>({kind:'hero',h,id:h.id,pose:h.hp>0?'idle':'ko',poseT:0,offX:0,offTX:0,flash:0,
       x:(FORM[i]||[336,100])[0],y:(FORM[i]||[336,100])[1],guarding:false}));
@@ -5280,6 +5348,16 @@ class BattleScene{
         this.addFloat(u.x+24,u.y,'GIFT REVIVE!','#ff80d0');
         return;
       }
+      // Nieśmiertelny — pasywka Kostuna: raz na walkę wstaje z połową HP
+      if(u.id==='kostun'&&!u.kostunRevived){
+        u.kostunRevived=true;
+        this.setHp(u,Math.max(1,Math.round(this.uMaxHp(u)*.5)));
+        u.pose='idle';u.h.status={};
+        this.say('Kostun nie zna śmierci — wstaje z kosą w garści!');
+        flash('#6a2a8a',.7);AudioSys.sfx('dark');this.spawnParts('dark',u.x+30,u.y+16);
+        this.addFloat(u.x+24,u.y,'NIEŚMIERTELNY!','#c08ad8');shake(6);
+        return;
+      }
       u.pose='ko';this.say(HEROES[u.id].name+' pada!');AudioSys.sfx('death');bumpCounter('deaths');
     }
   }
@@ -5434,6 +5512,52 @@ class BattleScene{
       }
       AudioSys.sfx('heal');flash('#40c0a0',.3);
       this.say('Coffin resetuje dane życia drużyny.');
+    }
+    else if(s.special==='soulsteal'){          // Kostun — Pochłonięcie Duszy (lifesteal)
+      u.pose='attack';u.offTX=-30;yield .2;
+      const t=(tgt&&this.alive(tgt))?tgt:this.aliveFoes()[0];
+      if(t){const r=this.applyHit(u,t,s.pow||1.7,s.type||'dark',{});
+        const drain=Math.max(1,Math.round((r.dmg||0)*(s.drain||.6)));
+        this.setHp(u,this.uHp(u)+drain);this.spawnParts('heal',u.x+30,u.y+16);
+        this.addFloat(u.x+24,u.y,'+'+drain,'#c08ad8');AudioSys.sfx('dark');}
+      u.offTX=0;
+    }
+    else if(s.special==='shroud'){              // Kostun — Kostny Całun (krwawienie+ogłuszenie+trucizna+OBR↓)
+      u.pose='attack';u.offTX=-30;yield .2;
+      const t=(tgt&&this.alive(tgt))?tgt:this.aliveFoes()[0];
+      if(t){this.applyHit(u,t,s.pow||1.1,s.type||'dark',{});
+        if(this.alive(t)){const st=this.uStatus(t);st.bleed=3;st.poison=3;st.stun=1;
+          t.buffs=t.buffs||{};t.buffs.def={mul:.7,turns:3};
+          this.addFloat(t.x+t.spr.w*t.scale/2,t.y-8,'CAŁUN!','#a05ad8');
+          this.spawnParts('dark',t.x+t.spr.w*t.scale/2,t.y+10);AudioSys.sfx('poison');shake(3);}}
+      u.offTX=0;
+    }
+    else if(s.special==='gamble'){              // Grief — Zakład o Życie (losowy mnożnik)
+      u.pose='attack';u.offTX=-30;yield .2;
+      const t=(tgt&&this.alive(tgt))?tgt:this.aliveFoes()[0];
+      const mult=rnd.pick([.5,.75,1,1.5,2,3]);
+      this.addFloat(u.x+24,u.y-10,'×'+mult,mult>=2?'#f0d050':'#d8cdb8');AudioSys.sfx('coin');
+      if(t)this.applyHit(u,t,(s.pow||1.5)*mult,s.type||'blunt',{});
+      if(mult>=3){flash('#f0d050',.5);shake(6);AudioSys.sfx('crit');}
+      u.offTX=0;
+    }
+    else if(s.special==='jackpot'){             // Grief — Jackpot (3 bębny → potężne AoE + bonus)
+      u.pose='attack';yield .2;
+      const reel=[rnd.i(0,2),rnd.i(0,2),rnd.i(0,2)],three=reel[0]===reel[1]&&reel[1]===reel[2];
+      const pow=(s.pow||1.2)*(three?2.2:1);
+      for(const t of this.aliveFoes())if(this.alive(t))this.applyHit(u,t,pow,s.type||'blunt',{});
+      if(three){this.say('JACKPOT! Trzy w rzędzie!');flash('#f0d050',.6);shake(7);AudioSys.sfx('levelup');
+        for(const h of this.aliveHeroes())h.h.buffs.atk={mul:1.3,turns:3};}
+      else{AudioSys.sfx('hit');}
+    }
+    else if(s.special==='coinflip'){            // Grief — Rzut Monetą (orzeł: lecz+wzmocnij / reszka: lecz)
+      u.pose='use';yield .3;
+      const t=(tgt&&tgt.kind==='hero')?tgt:this.aliveHeroes()[0];
+      const heads=rnd.chance(.5);
+      this.addFloat(u.x+24,u.y-10,heads?'ORZEŁ':'RESZKA',heads?'#f0d050':'#8ad0e0');AudioSys.sfx('coin');
+      if(t){this.setHp(t,this.uHp(t)+Math.round(this.uMaxHp(t)*.45));
+        if(heads){t.h.buffs.atk={mul:1.35,turns:3};t.h.buffs.def={mul:1.2,turns:3};this.spawnParts('buff',t.x+30,t.y+10);}
+        this.spawnParts('heal',t.x+30,t.y+16);this.addFloat(t.x+24,t.y,'+','#7ad08a');AudioSys.sfx('heal');}
     }
     u.pose='idle';yield .5;yield* this.endTurnSeq(u);
   }
@@ -5885,9 +6009,11 @@ class BattleScene{
       txt('Wrogowie zachodzą drogę!',16,196,'#c75a4a',9);
     }
     // statusy drużyny
-    const stStep=this.heroes.length>4?15:(this.heroes.length>3?18:24);
+    const _np=this.heroes.length;
+    const stStep=_np>5?11:(_np>4?14:(_np>3?18:24));
+    const stY0=_np>5?184:190;
     this.heroes.forEach((u,i)=>{
-      const x=150,y=190+i*stStep,h=u.h;
+      const x=150,y=stY0+i*stStep,h=u.h;
       const curMark=this.cur===u&&this.state==='menu';
       if(curMark){ctx.fillStyle='rgba(201,163,90,.1)';ctx.fillRect(x-6,y-3,200,stStep-2);}
       txt(HEROES[u.id].name,x,y,h.hp<=0?'#7a3a32':(curMark?'#f0d9a3':'#d8cdb8'),8);
@@ -6231,9 +6357,11 @@ function newGame(){
   G.relics={owned:{},active:[]};G.helpers={owned:{},active:[]};
   G.dayT=0.22;G.playtime=0;G.chapter='Pieśń I';G.runId=Date.now();
   G.chapter='Pie\u015b\u0144 I \u2014 Popi\u00f3\u0142';
+  ensureEntryPlayerName();
   setScene(Field);loadMap('wioska',12,12,'down',{autosave:false});
   runScript(SCRIPTS.prolog());
   saveGame(0);
+  submitGlobal(true);publishArenaSnapshot(true);
 }
 // TRYB DEVELOPERSKI: drużyna poz.100, nieskończone srebro, świat otwarty (nie nadpisuje zapisu)
 function newGameSandbox(){
@@ -8420,7 +8548,7 @@ class GuildScene{
 }
 
 //================ KRONIKA AKTUALIZACJI ================
-const GAME_VER='Pieśń III · Arena i Gildie';
+const GAME_VER='Pieśń IV · Kostun, Kasyno i Limitowani';
 const CHANGELOG=[
   {v:'Arena i Gildie',t:'Asynchroniczny multiplayer',d:'ARENA PvP w wiosce: walcz z kompaniami innych najemników — w tym z DRUŻYNAMI PRAWDZIWYCH GRACZY pobieranymi z sieci (znacznik „online"). Ranking i 6 lig (Brąz→Legenda), serie zwycięstw, żetony areny i sklep z unikatami (Klinga/Pancerz/Pierścień Mistrza). GILDIE: załóż własną (nazwa + barwa) albo dołącz do istniejącej — poziomy gildii, 6 perków dających realne bonusy (srebro, doświadczenie, ATK i OBR drużyny, żetony), skarbiec z donacjami, roster kompanii i tygodniowe zadania gildii. Wszystko zapisywane między sesjami.'},
   {v:'Mroźna Brama',t:'Coffin, Chipper i śnieżne pola',d:'COFFIN dołącza jako grywalna, czwarta postać (po Strachu na Wróble) — robot wsparcia z FNAF World: Pudełka-Prezenty (auto-wskrzeszenie z pełnią życia), NeonWall (blokuje wszystkie ataki), MegaWirus (ciężki upływ życia wroga). MR. CHIPPER — bóbr-drwal z toporem (boss z lasów Choppy), teraz NAJTRUDNIEJSZY boss tej pieśni; po pokonaniu DOŁĄCZA jako piąty kompan z własnymi technikami drwala (Rąbanie, Szał Piły, Powalający Rąb). Dusting Fields skute mrozem: śnieżyca z padającym śniegiem, lekki blur, skały i martwe drzewa — zero zieleni, własne śnieżne tło bitewne. Nowy SKRZYNKA na spawnie — wiadomości od deweloperów ze znacznikiem żółtego „!". Nowy wróg WIRUS, kupiec LOLBIT. Zdobywane doświadczenie zmniejszone o połowę. Naprawiono zawijanie długich komunikatów w walce. Szyk drużyny obsługuje pięć postaci.'},
@@ -8434,6 +8562,997 @@ const CHANGELOG=[
 ];
 
 // ===== APPEND POINT =====
+
+//================ NOWY ŚWIAT: CROYDON PLAYGROUND (portal-drzewo w wiosce) ================
+function genCroydon(){
+  const w=26,h=18,g=[];for(let y=0;y<h;y++)g.push(new Array(w).fill('.'));
+  // ramka drzew
+  gridRect(g,0,0,w-1,0,'T');gridRect(g,0,h-1,w-1,h-1,'T');gridRect(g,0,0,0,h-1,'T');gridRect(g,w-1,0,w-1,h-1,'T');
+  gridRect(g,7,4,18,12,':');                 // plac zabaw (klepisko)
+  // kępy drzewek wewnątrz dla nastroju
+  [[4,4],[21,4],[4,13],[21,13],[13,3]].forEach(([x,y])=>{g[y][x]='T';if(x+1<w-1)g[y][x+1]='t';});
+  // ścieżka-wyjście przez dolną ramkę z powrotem do Popielnika
+  g[h-1][12]='=';g[h-1][13]='=';g[h-2][12]='=';g[h-2][13]='=';
+  return g.map(r=>r.join(''));
+}
+Object.assign(MAPS,{
+  croydon:{name:'Croydon Playground',music:'circus',outdoor:true,pad:'T',grid:genCroydon(),objects:[
+    {type:'prop',p:'carousel',x:12,y:6},
+    {type:'prop',p:'well',x:8,y:9},
+    {type:'prop',p:'stall',x:16,y:8},
+    {type:'prop',p:'lantern',x:6,y:4,nosolid:true},{type:'prop',p:'lantern',x:19,y:4,nosolid:true},
+    {type:'prop',p:'lantern',x:6,y:12,nosolid:true},{type:'prop',p:'lantern',x:19,y:12,nosolid:true},
+    {type:'prop',p:'fence_plank',x:9,y:12},{type:'prop',p:'fence_plank',x:15,y:12},{type:'prop',p:'fence_plank',x:11,y:4},
+    {type:'sign',x:11,y:10,text:'CROYDON PLAYGROUND. Nowy swiat za zaslona drzewa. Plac zabaw dopiero powstaje — wracaj, bo bedzie rosl.'},
+    {type:'chest',id:'croy1',x:3,y:3,item:'sole',n:1},
+    {type:'exit',x:12,y:17,to:'wioska',tx:22,ty:18,dir:'up'},
+    {type:'exit',x:13,y:17,to:'wioska',tx:22,ty:18,dir:'up'},
+  ]},
+});
+
+//==================================================================================
+//  PIEŚŃ IV — KOSTUN, LIMITOWANI BOSSOWIE, KASYNO I GRIEF (cała sekcja dopisana)
+//==================================================================================
+
+// ——— PRZEDMIOTY: unikaty (limitowane = złoty świecący tag „Limited") ———
+Object.assign(ITEMS,{
+  // nagrody questów Kostuna
+  topor_zniw:{name:'Topór Żniw',type:'weapon',who:'brand',price:0,icon:'sword',stats:{atk:24,spd:-1},limited:true,desc:'Dar Kostuna. Każdy zamach to jeden pokos dusz.'},
+  szpada_cieni:{name:'Szpada Cieni',type:'weapon',who:'mira',price:0,icon:'sword',stats:{atk:17,dex:6},limited:true,desc:'Smukła klinga pijąca światło.'},
+  kosiec_widm:{name:'Kosiec Widm',type:'weapon',who:'wit',price:0,icon:'bow',stats:{atk:15,dex:8},limited:true,desc:'Ostrza hartowane na nagrobku.'},
+  pila_grobowa:{name:'Piła Grobowa',type:'weapon',who:'chipper',price:0,icon:'sword',stats:{atk:22,def:3},limited:true,desc:'Łańcuch piły oplata kości.'},
+  rdzen_trumny:{name:'Rdzeń Trumny',type:'weapon',who:'coffin',price:0,icon:'gem',stats:{atk:14,sp:10},limited:true,desc:'Czarna bateria z grobowca.'},
+  calun_pancerz:{name:'Pancerz Całunowy',type:'armor',price:0,icon:'armor',stats:{def:20,hp:30},limited:true,desc:'Zbroja z grobowego płótna. Lekka jak całun, twarda jak trumna.'},
+  kosciany_sygnet:{name:'Kościany Sygnet',type:'acc',price:0,icon:'ring',stats:{atk:7,def:5,spd:3},limited:true,desc:'Sygnet pana kosy.'},
+  kosa_kostuna:{name:'Kosa Pierwotna',type:'weapon',who:'kostun',price:0,icon:'sword',stats:{atk:30,dex:5},limited:true,desc:'Pierwsza kosa świata. Zbiera plon, którego nikt nie zasiał.'},
+  // broń Griefa
+  dlon_fortuny:{name:'Dłoń Fortuny',type:'weapon',who:'grief',price:0,icon:'gem',stats:{atk:18,dex:6},limited:true,desc:'Mechaniczne ramię automatu losu.'},
+  // łupy limitowanych bossów (co 3h)
+  kosa_godzin:{name:'Kosa Godzin',type:'weapon',who:'mira',price:0,icon:'sword',stats:{atk:20,dex:7,spd:2},limited:true,desc:'Wskazówka zegara, która tnie czas.'},
+  mlot_mennicy:{name:'Młot Mennicy',type:'weapon',who:'brand',price:0,icon:'sword',stats:{atk:26,def:4},limited:true,desc:'Bił monety. Teraz bije czaszki.'},
+  pajeczy_pancerz:{name:'Pajęczy Pancerz',type:'armor',price:0,icon:'armor',stats:{def:18,spd:4,dex:3},limited:true,desc:'Utkany z nici Eonów. Lekki i niezniszczalny.'},
+  lustrzany_sygnet:{name:'Lustrzany Sygnet',type:'acc',price:0,icon:'amulet',stats:{atk:5,def:5,dex:4,spd:2},limited:true,desc:'Odbija ciosy losu.'},
+  kly_otchlani:{name:'Kły Otchłani',type:'weapon',who:'wit',price:0,icon:'bow',stats:{atk:18,dex:6},limited:true,desc:'Wyrwane bestii, która nie ma dna.'},
+  // unikaty kasyna (sloty kolorowe, 0.01%)
+  as_pikowy:{name:'As Pikowy',type:'acc',price:0,icon:'gem',stats:{atk:6,dex:5},limited:true,desc:'Karta, która zawsze wygrywa.'},
+  karty_losu:{name:'Karty Losu',type:'weapon',who:'mira',price:0,icon:'bow',stats:{atk:16,dex:7},limited:true,desc:'Talia ostra jak brzytwa krupiera.'},
+  zloty_kielich:{name:'Złoty Kielich',type:'acc',price:0,icon:'amulet',stats:{hp:40,sp:12},limited:true,desc:'Toast za wieczne szczęście.'},
+  szafir_gracza:{name:'Szafir Gracza',type:'acc',price:0,icon:'ring',stats:{dex:6,spd:5},limited:true,desc:'Klejnot, który mruga jak neon.'},
+  rubinowa_korona:{name:'Rubinowa Korona',type:'armor',price:0,icon:'armor',stats:{def:19,hp:35},limited:true,desc:'Korona króla stołów.'},
+  kosci_przeznaczenia:{name:'Kości Przeznaczenia',type:'weapon',who:'brand',price:0,icon:'sword',stats:{atk:23,spd:2},limited:true,desc:'Każdy rzut to wyrok.'},
+});
+
+// ——— BOHATEROWIE: Kostun (glass cannon) i Grief (hazard) ———
+Object.assign(HEROES,{
+  kostun:{name:'Kostun',cls:'Pan Kosy',dmgType:'dark',undead:true,
+    base:{hp:34,sp:22,atk:19,def:5,dex:10,spd:11},grow:{hp:5,sp:3.2,atk:3.7,def:1,dex:1.9,spd:1.5}},
+  grief:{name:'Grief',cls:'Automat Losu',dmgType:'blunt',robot:true,
+    base:{hp:48,sp:18,atk:14,def:7,dex:8,spd:9},grow:{hp:8.5,sp:2.6,atk:2.7,def:1.4,dex:1.6,spd:1.3}},
+});
+
+// ——— TECHNIKI ———
+Object.assign(SKILLS,{
+  // Kostun — Pan Kosy (najwyższe obrażenia, kruchy)
+  pokos:{name:'Szeroki Pokos',user:'kostun',lvl:1,sp:6,target:'enemies',pow:1.5,type:'slash',desc:'Kosa tnie wszystkich wrogów naraz. 150% obrażeń ciętych.'},
+  pochlon:{name:'Pochłonięcie Duszy',user:'kostun',lvl:1,sp:5,target:'enemy',pow:1.8,type:'dark',special:'soulsteal',drain:.6,desc:'Mroczny cios. Leczy Kostuna za 60% zadanych obrażeń.'},
+  calun:{name:'Kostny Całun',user:'kostun',lvl:3,sp:7,target:'enemy',pow:1.2,type:'dark',special:'shroud',desc:'Klątwa: krwawienie, ogłuszenie i trucizna naraz oraz osłabienie obrony wroga.'},
+  zniwa:{name:'Godzina Żniw',user:'kostun',lvl:8,sp:12,target:'enemies',pow:2.4,type:'dark',desc:'Ostateczny pokos — ogromne obrażenia ciemności na wszystkich wrogów.'},
+  // Grief — Automat Losu (hazard)
+  zaklad:{name:'Zakład o Życie',user:'grief',lvl:1,sp:4,target:'enemy',pow:1.5,type:'blunt',special:'gamble',desc:'Losowy mnożnik obrażeń ×0.5 do ×3. Czysty hazard.'},
+  jackpot:{name:'Jackpot',user:'grief',lvl:1,sp:6,target:'enemies',pow:1.2,type:'blunt',special:'jackpot',desc:'Trzy bębny. Trójka = potężny cios w całą wrogą drużynę i wzmocnienie sojuszników.'},
+  moneta:{name:'Rzut Monetą',user:'grief',lvl:3,sp:5,target:'ally',special:'coinflip',field:true,desc:'Orzeł: leczy i wzmacnia sojusznika. Reszka: tylko leczy.'},
+  fala_zetonow:{name:'Fala Żetonów',user:'grief',lvl:6,sp:7,target:'enemies',pow:1.35,type:'pierce',desc:'Grad żetonów rani wszystkich wrogów.'},
+});
+
+// ——— GLOBALNE POMOCNIKI: licznik zakręceń → Grief, złoty tag „Limited" ———
+function slotSpun(){ G.slotSpins=(G.slotSpins||0)+1; checkGriefRecruit(); }
+function checkGriefRecruit(){
+  if((G.slotSpins||0)>=2500 && !(G.flags&&G.flags.grief_recruited) && !G.party.some(h=>h.id==='grief') && G.party.length<7){
+    G.flags.grief_recruited=true;
+    const h=mkHero('grief',Math.max(1,(G.party[0]?G.party[0].level:1)));
+    h.equip.weapon='dlon_fortuny';
+    G.party.push(h);if(typeof rebuildHeroSprites==='function')rebuildHeroSprites(h);
+    AudioSys.sfx('levelup');flash('#f0d050',.8);shake(6);
+    pushToast('GRIEF dołącza do drużyny! 2500 zakręceń!','heart');
+  }
+}
+function drawLimitedTag(x,y){           // złoty, świecący znacznik przy nazwie unikatu
+  const pulse=.55+.45*Math.sin(gTime*4);
+  const w=txtW('LIMITED',7)+8,h=11;
+  ctx.save();
+  ctx.shadowColor='rgba(240,210,80,'+pulse.toFixed(2)+')';ctx.shadowBlur=7;
+  ctx.fillStyle=(Math.floor(gTime*5)%2)?'#ffe87a':'#f0c84a';ctx.fillRect(x,y,w,h);
+  ctx.shadowBlur=0;ctx.restore();
+  txt('LIMITED',x+w/2,y+2,'#2a2008',7,'center');
+  return w;
+}
+// ——— SPRITE'Y: KOSTUN (żniwiarz z kosą) ———
+const KOST_PAL={robe:0x2c1a3a,robeD:0x150a20,robeL:0x47305f,skull:0xeae4d2,skullD:0xb6ae9c,eye:0x9a5ad8,eyeL:0xe0b0ff,bone:0xd6cebc,shaft:0x5a4632,shaftD:0x3a2c1e,blade:0xc6ced6,bladeL:0xeef2f6,bladeD:0x86909a};
+function kostunHeroPix(pose,frame){
+  const p=new Pix(34,42),C=KOST_PAL;
+  const oy=(pose==='idle'&&frame===1)?1:0;
+  const atk=(pose==='attack'),hurt=(pose==='hurt'),ko=(pose==='ko'),guard=(pose==='guard'),use=(pose==='use');
+  if(ko){
+    p.ellipse(17,34,15,5,C.robe);p.ellipse(17,34,12,3,C.robeL);
+    p.ellipse(8,32,4,4,C.skull);p.frect(6,32,5,3,C.skull);
+    p.set(7,32,C.eye);p.set(10,32,C.eye);
+    p.shade(.6);p.outline(0x0b0810);return p;
+  }
+  for(let y=20;y<39;y++){const wHalf=4+Math.round((y-20)*0.62);for(let x=17-wHalf;x<=17+wHalf;x++)p.set(x,y+oy,C.robe);}
+  p.line(17,22+oy,17,38+oy,C.robeD);
+  p.line(12,26+oy,9,38+oy,C.robeD);p.line(22,26+oy,25,38+oy,C.robeD);
+  p.line(14,24+oy,12,38+oy,C.robeL);
+  p.ellipse(17,16+oy,8,8,C.robe);p.ellipse(17,15+oy,6,6,C.robeL);
+  p.ellipse(17,10+oy,8,7,C.robeD);p.ellipse(17,8+oy,6,4,C.robe);
+  p.frect(13,12+oy,8,7,C.skull);p.ellipse(17,13+oy,4,4,C.skull);
+  p.ellipse(17,18+oy,3,2,C.skullD);
+  const ev=hurt?0xe04030:C.eye;
+  p.frect(14,13+oy,3,3,0x0e0618);p.frect(18,13+oy,3,3,0x0e0618);
+  p.set(15,14+oy,ev);p.set(19,14+oy,ev);p.set(14,13+oy,C.eyeL);p.set(20,13+oy,C.eyeL);
+  p.frect(15,18+oy,5,1,C.skullD);p.set(16,18+oy,C.skull);p.set(18,18+oy,C.skull);
+  p.ellipse(8,24+oy,2,2,C.bone);p.ellipse(26,23+oy,2,2,C.bone);
+  const sx=atk?5:7;
+  p.line(sx,40+oy,sx+3,4+oy,C.shaft);p.line(sx+1,40+oy,sx+4,4+oy,C.shaftD);
+  if(atk){
+    p.line(sx+3,6+oy,1,12+oy,C.blade);p.line(sx+3,7+oy,2,13+oy,C.bladeL);
+    p.line(1,12+oy,3,19+oy,C.blade);p.line(3,19+oy,7,23+oy,C.bladeD);
+  } else if(guard){
+    p.frect(sx-1,8+oy,3,16,C.bladeD);p.frect(sx-1,8+oy,3,2,C.bladeL);
+  } else {
+    p.line(sx+3,4+oy,0,9+oy,C.blade);p.line(sx+3,5+oy,1,10+oy,C.bladeL);
+    p.line(0,9+oy,2,16+oy,C.blade);p.line(2,16+oy,5,19+oy,C.bladeD);
+  }
+  if(use){p.ellipse(26,20+oy,2,2,C.eyeL);p.set(27,19+oy,C.eye);}
+  p.shade(.85);p.outline(0x0b0810);
+  return p;
+}
+function kostunWalkPix(view,frame){
+  const p=new Pix(16,22),C=KOST_PAL;
+  const sw=frame===1?-1:(frame===2?1:0);
+  for(let y=11;y<20;y++){const wHalf=3+Math.round((y-11)*0.5);for(let x=8-wHalf;x<=8+wHalf;x++)p.set(x+(y>16?sw:0),y,C.robe);}
+  p.line(8,12,8,19,C.robeD);
+  p.ellipse(8,6,5,5,C.robeD);p.frect(5,5,7,5,C.skull);
+  if(view==='up'){p.frect(5,4,7,5,C.robeD);}
+  else if(view==='down'){p.set(6,6,C.eye);p.set(10,6,C.eye);}
+  else{p.set(6,6,C.eye);}
+  p.line(2,20,4,1,C.shaft);if(view!=='up')p.line(4,1,0,4,C.blade);
+  p.shade(.6);p.outline(0x0b0810);
+  return p;
+}
+function kostunPortraitPix(){
+  const p=new Pix(28,28),C=KOST_PAL;
+  p.ellipse(14,15,12,12,C.robe);p.ellipse(14,13,10,10,C.robeD);
+  p.ellipse(14,16,8,9,0x0e0618);
+  p.ellipse(14,15,6,7,C.skull);p.frect(9,14,10,8,C.skull);
+  p.ellipse(14,20,4,3,C.skullD);
+  p.frect(10,14,3,3,0x0e0618);p.frect(16,14,3,3,0x0e0618);
+  p.set(11,15,C.eye);p.set(17,15,C.eye);p.set(10,14,C.eyeL);p.set(18,14,C.eyeL);
+  p.frect(11,21,7,1,C.skullD);
+  p.line(2,26,5,2,C.shaft);p.line(5,2,1,6,C.blade);p.line(1,6,3,12,C.bladeL);
+  p.shade(.6);p.outline(0x0b0810);
+  return p;
+}
+function makeKostunHero(){
+  const battle={
+    idle:[kostunHeroPix('idle',0).toCanvas(),kostunHeroPix('idle',1).toCanvas()],
+    attack:[kostunHeroPix('attack',0).toCanvas(),kostunHeroPix('attack',1).toCanvas()],
+    hurt:kostunHeroPix('hurt',0).toCanvas(),ko:kostunHeroPix('ko',0).toCanvas(),
+    guard:kostunHeroPix('guard',0).toCanvas(),use:kostunHeroPix('use',0).toCanvas()};
+  const walk={
+    down:[0,1,2].map(f=>kostunWalkPix('down',f).toCanvas()),
+    up:[0,1,2].map(f=>kostunWalkPix('up',f).toCanvas()),
+    left:[0,1,2].map(f=>kostunWalkPix('side',f).toCanvas()),
+    right:[0,1,2].map(f=>kostunWalkPix('side',f).mirrored().toCanvas())};
+  IMG.heroes.kostun={walk,battle,portrait:kostunPortraitPix().toCanvas()};
+}
+
+// ——— SPRITE'Y: GRIEF (chibi automat-człowiek) ———
+const GRIEF_PAL={cab:0xc83838,cabD:0x8e2424,cabL:0xe85a5a,gold:0xe8c050,steel:0xb8bcc4,steelD:0x80858f,reel:0xf0ece0,reelD:0xc8c2b4,sym1:0xd83028,sym2:0x48c8e8,sym3:0x9428d8,skin:0xe8c4a0,skinD:0xc89a72,eye:0x101018,lever:0x6a6a72,leverB:0xe85a5a};
+function griefHeroPix(pose,frame){
+  const p=new Pix(30,34),C=GRIEF_PAL;
+  const oy=(pose==='idle'&&frame===1)?1:0;
+  const atk=(pose==='attack'),hurt=(pose==='hurt'),ko=(pose==='ko');
+  if(ko){
+    p.frect(6,26,18,6,C.cabD);p.frect(6,24,18,3,C.cab);
+    p.ellipse(7,24,3,3,C.skin);p.set(6,24,C.eye);
+    p.shade(.55);p.outline(0x10141a);return p;
+  }
+  p.frect(9,30+oy,3,4,C.steelD);p.frect(18,30+oy,3,4,C.steelD);
+  p.frect(8,33+oy,5,1,C.steel);p.frect(17,33+oy,5,1,C.steel);
+  p.frect(6,12+oy,18,19,C.cab);p.frect(6,12+oy,18,2,C.cabL);p.frect(6,29+oy,18,2,C.cabD);
+  p.frect(6,12+oy,2,19,C.cabD);p.frect(22,12+oy,2,19,C.cabD);
+  p.frect(7,15+oy,16,2,C.gold);p.frect(7,15+oy,16,1,lit(C.gold,.3));
+  for(let i=0;i<3;i++){const rx=8+i*5;p.frect(rx,18+oy,4,7,C.reel);p.frect(rx,18+oy,4,1,C.reelD);
+    const sc=[C.sym1,C.sym2,C.sym3][(i+Math.floor(gTime*4))%3];p.frect(rx+1,20+oy,2,2,sc);}
+  p.frect(7,17+oy,16,1,C.gold);p.frect(7,25+oy,16,1,C.gold);
+  p.line(24,18+oy,26,14+oy,C.lever);p.ellipse(26,13+oy,1.6,1.6,C.leverB);
+  p.ellipse(15,8+oy,5,5,C.skin);p.ellipse(15,7+oy,4,3,lit(C.skin,.2));
+  p.frect(10,4+oy,10,2,C.cabD);p.frect(11,3+oy,8,1,C.cab);
+  const ev=hurt?0xe04030:C.eye;p.set(13,8+oy,ev);p.set(17,8+oy,ev);
+  p.frect(14,10+oy,2,1,C.skinD);
+  if(atk){p.line(6,18+oy,1,16+oy,C.skin);p.ellipse(0,15+oy,1.6,1.6,C.gold);}
+  else{p.line(6,20+oy,3,24+oy,C.skin);p.line(24,20+oy,27,24+oy,C.skin);}
+  p.shade(.6);p.outline(0x10141a);
+  return p;
+}
+function griefWalkPix(view,frame){
+  const p=new Pix(16,20),C=GRIEF_PAL;
+  const hov=frame===1?-1:(frame===2?1:0);
+  p.frect(5,16,2,3,C.steelD);p.frect(9,16,2,3,C.steelD);
+  p.frect(3,7,10,9,C.cab);p.frect(3,7,10,1,C.cabL);p.frect(3,15,10,1,C.cabD);
+  p.frect(4,9,8,1,C.gold);
+  for(let i=0;i<3;i++){p.frect(4+i*3,11,2,3,C.reel);p.set(4+i*3,12,[C.sym1,C.sym2,C.sym3][(i+Math.floor(gTime*4))%3]);}
+  p.ellipse(8,4+(hov>0?-1:0),3,3,C.skin);
+  if(view==='up'){p.frect(5,2,6,2,C.cabD);}
+  else if(view==='down'){p.set(7,4,C.eye);p.set(9,4,C.eye);}
+  else{p.set(7,4,C.eye);}
+  p.frect(5,1,6,1,C.cabD);
+  p.shade(.55);p.outline(0x10141a);
+  return p;
+}
+function griefPortraitPix(){
+  const p=new Pix(28,28),C=GRIEF_PAL;
+  p.frect(4,12,20,15,C.cab);p.frect(4,12,20,2,C.cabL);p.frect(4,25,20,2,C.cabD);
+  p.frect(5,15,18,2,C.gold);
+  for(let i=0;i<3;i++){const rx=6+i*6;p.frect(rx,18,5,6,C.reel);p.set(rx+2,20,[C.sym1,C.sym2,C.sym3][i]);}
+  p.ellipse(14,8,6,6,C.skin);p.frect(8,3,12,2,C.cabD);p.frect(9,2,10,1,C.cab);
+  p.set(12,8,C.eye);p.set(16,8,C.eye);p.frect(13,10,3,1,C.skinD);
+  p.line(23,16,26,11,C.lever);p.ellipse(26,10,1.8,1.8,C.leverB);
+  p.shade(.55);p.outline(0x10141a);
+  return p;
+}
+function makeGriefHero(){
+  const battle={
+    idle:[griefHeroPix('idle',0).toCanvas(),griefHeroPix('idle',1).toCanvas()],
+    attack:[griefHeroPix('attack',0).toCanvas(),griefHeroPix('attack',1).toCanvas()],
+    hurt:griefHeroPix('hurt',0).toCanvas(),ko:griefHeroPix('ko',0).toCanvas(),
+    guard:griefHeroPix('idle',0).toCanvas(),use:griefHeroPix('attack',0).toCanvas()};
+  const walk={
+    down:[0,1,2].map(f=>griefWalkPix('down',f).toCanvas()),
+    up:[0,1,2].map(f=>griefWalkPix('up',f).toCanvas()),
+    left:[0,1,2].map(f=>griefWalkPix('side',f).toCanvas()),
+    right:[0,1,2].map(f=>griefWalkPix('side',f).mirrored().toCanvas())};
+  IMG.heroes.grief={walk,battle,portrait:griefPortraitPix().toCanvas()};
+}
+// ——— KASYNO: kolorowe automaty (każdy kolor = inny unikat, 0.01%) ———
+const CASINO_SLOTS={
+  red:{title:'AUTOMAT RUBINOWY',cost:30,color:'#c83838',colorD:'#8e2424',prize:'rubinowa_korona',intro:'Czerwone bębny. Rubinowa Korona w środku.'},
+  gold:{title:'AUTOMAT ZŁOTY',cost:40,color:'#c8a020',colorD:'#8a6c10',prize:'zloty_kielich',intro:'Złoto kusi. Kielich dla szczęściarza.'},
+  blue:{title:'AUTOMAT SZAFIROWY',cost:30,color:'#3060c0',colorD:'#1e3e8a',prize:'szafir_gracza',intro:'Błękit neonu. Szafir Gracza w bębnach.'},
+  purple:{title:'AUTOMAT AMETYSTOWY',cost:35,color:'#7028b8',colorD:'#4a1880',prize:'as_pikowy',intro:'Fiolet hazardu. As Pikowy czeka.'},
+  green:{title:'AUTOMAT SZMARAGDOWY',cost:35,color:'#208a4a',colorD:'#106030',prize:'karty_losu',intro:'Zieleń stołu. Karty Losu na trzy bębny.'},
+  black:{title:'AUTOMAT ONYKSOWY',cost:50,color:'#2a2a32',colorD:'#16161c',prize:'kosci_przeznaczenia',intro:'Czarny jak otchłań. Kości Przeznaczenia.'},
+};
+
+// ——— BLACKJACK ———
+class BlackJackScene{
+  constructor(onDone){this.onDone=onDone;this.phase='bet';this.bet=50;this.t=0;this.sel=0;
+    this.player=[];this.dealer=[];this.deck=[];this.hideHole=true;this.msg='Postaw zakład i rozdaj karty.';this.msgC='#d8cdb8';}
+  newDeck(){const d=[];for(let s=0;s<4;s++)for(let v=1;v<=13;v++)d.push({v,s});for(let i=d.length-1;i>0;i--){const j=rnd.i(0,i);const t=d[i];d[i]=d[j];d[j]=t;}this.deck=d;}
+  draw1(){return this.deck.pop();}
+  handVal(h){let sum=0,aces=0;for(const c of h){let v=c.v;if(v>10)v=10;if(v===1){aces++;v=11;}sum+=v;}while(sum>21&&aces>0){sum-=10;aces--;}return sum;}
+  deal(){
+    if(G.gold<this.bet){this.msg='Za mało srebra.';this.msgC='#e85a4a';AudioSys.sfx('cancel');return;}
+    giveGold(-this.bet);AudioSys.sfx('coin');this.newDeck();
+    this.player=[this.draw1(),this.draw1()];this.dealer=[this.draw1(),this.draw1()];
+    this.hideHole=true;this.phase='play';this.sel=0;this.t=0;
+    if(this.handVal(this.player)===21)this.stand();
+    else{this.msg='Dobierz albo pas.';this.msgC='#d8cdb8';}
+  }
+  hit(){this.player.push(this.draw1());AudioSys.sfx('cursor');if(this.handVal(this.player)>21)this.resolve();}
+  stand(){this.hideHole=false;this.phase='dealer';this.t=0;}
+  update(dt){this.t+=dt;
+    if(this.phase==='dealer'&&this.t>.5){this.t=0;
+      if(this.handVal(this.dealer)<17){this.dealer.push(this.draw1());AudioSys.sfx('cursor');}
+      else this.resolve();}}
+  resolve(){
+    this.hideHole=false;const pv=this.handVal(this.player),dv=this.handVal(this.dealer);
+    const bj=pv===21&&this.player.length===2;let pay=0,m,c;
+    if(pv>21){m='Fura! Przegrana.';c='#e85a4a';}
+    else if(bj&&dv!==21){pay=Math.round(this.bet*2.5);m='BLACKJACK! +'+pay+' srebra!';c='#f0d050';}
+    else if(dv>21||pv>dv){pay=this.bet*2;m='Wygrana! +'+pay+' srebra.';c='#8ad07a';}
+    else if(pv===dv){pay=this.bet;m='Remis. Zakład wraca.';c='#c9a35a';}
+    else{m='Krupier wygrywa.';c='#e85a4a';}
+    if(pay>0)giveGold(pay);
+    AudioSys.sfx(pay>this.bet?'levelup':(pay===0?'cancel':'coin'));
+    if(pay>this.bet)flash('#f0d050',.3);
+    this.msg=m;this.msgC=c;this.phase='result';
+  }
+  key(a){
+    if(this.phase==='bet'){
+      if(a==='up')this.bet=Math.min(Math.max(10,G.gold),this.bet+10);
+      else if(a==='down')this.bet=Math.max(10,this.bet-10);
+      else if(a==='ok')this.deal();
+      else if(a==='cancel'){popScene();if(this.onDone)this.onDone();}
+    } else if(this.phase==='play'){
+      if(a==='left'||a==='right')this.sel=1-this.sel;
+      else if(a==='ok'){this.sel===0?this.hit():this.stand();}
+    } else if(this.phase==='result'){
+      if(a==='ok'){this.phase='bet';this.player=[];this.dealer=[];this.msg='Kolejne rozdanie?';this.msgC='#d8cdb8';}
+      else if(a==='cancel'){popScene();if(this.onDone)this.onDone();}
+    }
+  }
+  drawCard(x,y,c,hidden){
+    ctx.fillStyle=hidden?'#3a2a5a':'#f4f0e6';ctx.fillRect(x,y,22,30);
+    ctx.strokeStyle='#1a1410';ctx.lineWidth=1;ctx.strokeRect(x+.5,y+.5,21,29);
+    if(hidden){ctx.fillStyle='#6a4a9a';ctx.fillRect(x+3,y+3,16,24);return;}
+    const ranks=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];const red=c.s===1||c.s===2;
+    txt(ranks[c.v-1],x+3,y+3,red?'#c83030':'#1a1410',7);
+    ctx.fillStyle=red?'#c83030':'#1a1410';
+    if(c.s===1){ctx.beginPath();ctx.arc(x+8,y+16,3,0,7);ctx.arc(x+14,y+16,3,0,7);ctx.moveTo(x+5,y+17);ctx.lineTo(x+11,y+24);ctx.lineTo(x+17,y+17);ctx.closePath();ctx.fill();}
+    else if(c.s===2){ctx.beginPath();ctx.moveTo(x+11,y+11);ctx.lineTo(x+17,y+18);ctx.lineTo(x+11,y+25);ctx.lineTo(x+5,y+18);ctx.closePath();ctx.fill();}
+    else if(c.s===0){ctx.beginPath();ctx.moveTo(x+11,y+11);ctx.lineTo(x+17,y+19);ctx.lineTo(x+5,y+19);ctx.closePath();ctx.fill();ctx.fillRect(x+10,y+19,2,4);}
+    else{ctx.beginPath();ctx.arc(x+11,y+14,3,0,7);ctx.arc(x+8,y+19,3,0,7);ctx.arc(x+14,y+19,3,0,7);ctx.fill();ctx.fillRect(x+10,y+20,2,4);}
+  }
+  draw(){
+    ctx.fillStyle='#0a1810';ctx.fillRect(0,0,W,H);
+    const gr=ctx.createRadialGradient(W/2,90,20,W/2,90,200);gr.addColorStop(0,'rgba(20,90,50,.5)');gr.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+    panel(W/2-150,10,300,24);txt('BLACKJACK',W/2-30,16,'#e8d070',11);txt('Srebro: '+G.gold,W/2+70,17,'#e0c040',7);
+    txt('KRUPIER'+(this.phase!=='bet'?'  ('+(this.hideHole?'?':this.handVal(this.dealer))+')':''),W/2-130,42,'#c9a35a',8);
+    this.dealer.forEach((c,i)=>this.drawCard(W/2-130+i*26,52,c,this.hideHole&&i===1));
+    txt('TY'+(this.phase!=='bet'?'  ('+this.handVal(this.player)+')':''),W/2-130,108,'#c9a35a',8);
+    this.player.forEach((c,i)=>this.drawCard(W/2-130+i*26,118,c,false));
+    if(this.phase==='bet'){
+      panel(W/2-100,168,200,40,.85);
+      txt('Zakład: '+this.bet+' srebra',W/2,176,'#f0d9a3',9,'center');
+      txt('▲▼ zmień   Z rozdaj   X wyjdź',W/2,192,'#b8ad98',7,'center');
+    } else if(this.phase==='play'){
+      const opts=['DOBIERZ','PAS'];
+      opts.forEach((o,i)=>{const x=W/2-50+i*70;if(i===this.sel){ctx.fillStyle='rgba(201,163,90,.2)';ctx.fillRect(x-8,180,62,14);}txt(o,x,183,i===this.sel?'#f0d9a3':'#b8ad98',8);});
+    }
+    panel(W/2-160,H-30,320,22,.88);txt(this.msg,W/2,H-23,(this.phase==='result'&&Math.floor(gTime*5)%2)?'#fff0d0':this.msgC,8,'center');
+    if(this.phase==='result')txt('Z — graj dalej    X — wyjście',W/2,H-44,'#8d8270',7,'center');
+  }
+}
+
+// ——— RULETKA ———
+const ROUL_RED=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+const ROUL_ORDER=[0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+class RouletteScene{
+  constructor(onDone){this.onDone=onDone;this.phase='bet';this.bet=50;this.betType=0;this.num=0;this.t=0;
+    this.angle=0;this.spinV=0;this.result=-1;this.msg='Obstaw i zakręć kołem fortuny.';this.msgC='#d8cdb8';}
+  betTypes(){return [{k:'red',n:'CZERWONE',pay:2},{k:'black',n:'CZARNE',pay:2},{k:'even',n:'PARZYSTE',pay:2},{k:'odd',n:'NIEPARZYSTE',pay:2},{k:'low',n:'1-18',pay:2},{k:'high',n:'19-36',pay:2},{k:'num',n:'NUMER',pay:36}];}
+  spin(){
+    if(G.gold<this.bet){this.msg='Za mało srebra.';this.msgC='#e85a4a';AudioSys.sfx('cancel');return;}
+    giveGold(-this.bet);AudioSys.sfx('coin');this.result=rnd.i(0,36);
+    this.phase='spin';this.t=0;this.spinV=14+rnd.range(0,4);
+  }
+  update(dt){this.t+=dt;
+    if(this.phase==='spin'){this.angle+=this.spinV*dt;this.spinV*=0.985;if(this.spinV<0.4){this.spinV=0;this.resolve();}}}
+  resolve(){
+    const r=this.result,bt=this.betTypes()[this.betType];let win=false;
+    if(bt.k==='red')win=ROUL_RED.has(r);
+    else if(bt.k==='black')win=r!==0&&!ROUL_RED.has(r);
+    else if(bt.k==='even')win=r!==0&&r%2===0;
+    else if(bt.k==='odd')win=r%2===1;
+    else if(bt.k==='low')win=r>=1&&r<=18;
+    else if(bt.k==='high')win=r>=19&&r<=36;
+    else if(bt.k==='num')win=r===this.num;
+    const col=r===0?'zielone':(ROUL_RED.has(r)?'czerwone':'czarne');
+    if(win){const pay=this.bet*bt.pay;giveGold(pay);this.msg='Wypadło '+r+' ('+col+')! Wygrana +'+pay+'!';this.msgC='#f0d050';AudioSys.sfx('levelup');flash('#f0d050',.4);shake(4);}
+    else{this.msg='Wypadło '+r+' ('+col+'). Przegrana.';this.msgC='#e85a4a';AudioSys.sfx('cancel');}
+    this.phase='result';
+  }
+  key(a){
+    if(this.phase==='bet'){
+      const bt=this.betTypes()[this.betType];
+      if(a==='up')this.betType=(this.betType+this.betTypes().length-1)%this.betTypes().length;
+      else if(a==='down')this.betType=(this.betType+1)%this.betTypes().length;
+      else if(a==='left'){if(bt.k==='num')this.num=(this.num+36)%37;else this.bet=Math.max(10,this.bet-10);}
+      else if(a==='right'){if(bt.k==='num')this.num=(this.num+1)%37;else this.bet=Math.min(Math.max(10,G.gold),this.bet+10);}
+      else if(a==='ok')this.spin();
+      else if(a==='cancel'){popScene();if(this.onDone)this.onDone();}
+    } else if(this.phase==='result'){
+      if(a==='ok'){this.phase='bet';this.msg='Obstaw ponownie.';this.msgC='#d8cdb8';}
+      else if(a==='cancel'){popScene();if(this.onDone)this.onDone();}
+    }
+  }
+  draw(){
+    ctx.fillStyle='#120a14';ctx.fillRect(0,0,W,H);
+    panel(W/2-150,8,300,22);txt('RULETKA',W/2-26,14,'#e8d070',11);txt('Srebro: '+G.gold,W/2+72,15,'#e0c040',7);
+    const cx=W/2,cy=100,R=60;
+    for(let i=0;i<37;i++){const n=ROUL_ORDER[i],a0=this.angle+i/37*Math.PI*2,a1=this.angle+(i+1)/37*Math.PI*2;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,a0,a1);ctx.closePath();
+      ctx.fillStyle=n===0?'#208a4a':(ROUL_RED.has(n)?'#c33030':'#202028');ctx.fill();}
+    ctx.fillStyle='#2a1a0a';ctx.beginPath();ctx.arc(cx,cy,20,0,7);ctx.fill();
+    ctx.strokeStyle='#e8c050';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.stroke();
+    ctx.fillStyle='#f0d050';ctx.beginPath();ctx.moveTo(cx,cy-R-1);ctx.lineTo(cx-5,cy-R-11);ctx.lineTo(cx+5,cy-R-11);ctx.closePath();ctx.fill();
+    if(this.phase!=='spin'&&this.result>=0){const col=this.result===0?'#208a4a':(ROUL_RED.has(this.result)?'#c33030':'#404048');ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx,cy,15,0,7);ctx.fill();txt(this.result+'',cx,cy-4,'#fff',9,'center');}
+    if(this.phase==='bet'){
+      const bts=this.betTypes();panel(20,172,W-40,54,.85);
+      bts.forEach((b,i)=>{const x=30+(i%4)*112,y=180+Math.floor(i/4)*14;
+        if(i===this.betType){ctx.fillStyle='rgba(201,163,90,.2)';ctx.fillRect(x-4,y-1,108,12);}
+        txt(b.n+(b.k==='num'?' '+this.num:'')+' x'+b.pay,x,y,i===this.betType?'#f0d9a3':'#b8ad98',7);});
+      txt('Stawka: '+this.bet+'   <> '+(bts[this.betType].k==='num'?'numer':'stawka')+'   Z zakrec   X wyjdz',W/2,216,'#8d8270',7,'center');
+    }
+    panel(W/2-160,H-26,320,20,.88);txt(this.msg,W/2,H-20,(this.phase==='result'&&Math.floor(gTime*5)%2)?'#fff0d0':this.msgC,8,'center');
+  }
+}
+
+// ——— MAPA KASYNA ———
+function genKasyno(){
+  const w=28,h=18,g=[];
+  for(let y=0;y<h;y++){const row=[];for(let x=0;x<w;x++)row.push((x===0||y===0||x===w-1||y===h-1)?'#':'.');g.push(row);}
+  [[6,4],[21,4],[6,13],[21,13]].forEach(([x,y])=>g[y][x]='#');
+  g[h-1][14]='.';   // próg wyjścia w dolnej ścianie
+  return g.map(r=>r.join(''));
+}
+Object.assign(MAPS,{
+  kasyno:{name:'Kasyno „Złota Kość"',music:'circus',pad:'#',floor:'floor_castle',wall:'wall_castle',grid:genKasyno(),objects:[
+    {type:'prop',p:'roulette_table',x:14,y:4,script:'roulette'},
+    {type:'prop',p:'blackjack_table',x:7,y:6,script:'blackjack'},
+    {type:'prop',p:'slot_red',x:3,y:4,script:'slot_red'},
+    {type:'prop',p:'slot_gold',x:3,y:8,script:'slot_gold'},
+    {type:'prop',p:'slot_blue',x:3,y:12,script:'slot_blue'},
+    {type:'prop',p:'slot_purple',x:24,y:4,script:'slot_purple'},
+    {type:'prop',p:'slot_green',x:24,y:8,script:'slot_green'},
+    {type:'prop',p:'slot_black',x:24,y:12,script:'slot_black'},
+    {type:'sign',x:13,y:14,text:'KASYNO Zlota Kosc. Kazdy kolorowy automat = inny unikat (0.01%). Zakrec lacznie 2500 razy, a poznasz Griefa.'},
+    {type:'exit',x:14,y:17,to:'wioska',tx:26,ty:6,dir:'down'},
+  ]},
+});
+MAPS.wioska.objects.push(
+  {type:'prop',p:'casino_door',x:26,y:4},
+  {type:'sign',x:25,y:5,text:'KASYNO „Zlota Kosc". BlackJack, Ruletka i automaty. Zejdz w dol.'},
+  {type:'exit',x:26,y:5,to:'kasyno',tx:14,ty:15,dir:'up'}
+);
+Object.assign(SCRIPTS,{
+  blackjack:()=>[{say:['','Stół obity zielonym suknem. Krupier tasuje. „Postaw srebro i dobierz do dwudziestu jeden — ale nie ponad."']},{minigame:'blackjack'}],
+  roulette:()=>[{say:['','Koło fortuny lśni czerwienią i czernią. „Obstaw, śmiałku. Kula nie zna litości."']},{minigame:'roulette'}],
+  slot_red:()=>[{minigame:'slot',slotTheme:'red'}],
+  slot_gold:()=>[{minigame:'slot',slotTheme:'gold'}],
+  slot_blue:()=>[{minigame:'slot',slotTheme:'blue'}],
+  slot_purple:()=>[{minigame:'slot',slotTheme:'purple'}],
+  slot_green:()=>[{minigame:'slot',slotTheme:'green'}],
+  slot_black:()=>[{minigame:'slot',slotTheme:'black'}],
+});
+// ——— LIMITOWANI BOSSOWIE (co 3 godziny, różne miejsca, unikatowe łupy) ———
+Object.assign(ENEMIES,{
+  lim_kosiarz:{name:'Kosiarz Eonów',hp:2400,atk:64,def:32,dex:18,spd:15,xp:3000,gold:700,boss:true,elite:true,limited:true,limitedDrop:'kosa_godzin',
+    res:{slash:.6,pierce:.6,blunt:1.1,dark:.4},drops:{},bg:'night',spr:{gen:'gold_skeleton',seed:9101,scale:2},
+    acts:[{w:3,kind:'attack',pow:1.8,type:'slash',name:'Pokos Czasu'},
+      {w:2,kind:'attack',pow:1.5,type:'dark',target:'all',status:'fear',ch:.4,name:'Fala Eonów'},
+      {w:2,kind:'attack',pow:2.0,type:'pierce',status:'bleed',ch:.7,name:'Wskazówka'},
+      {w:1,kind:'buff',buff:{atk:1.4,spd:1.3},dur:3,name:'Przyspieszenie czasu'}],
+    phase:{at:.4,say:'Kosiarz Eonów zakrzywia czas — porusza się dwa razy szybciej!',buff:{spd:1.5,atk:1.3}},
+    desc:'Żniwiarz spoza czasu. Wychodzi z rozdarcia tylko na chwilę, raz na trzy godziny.'},
+  lim_golem:{name:'Golem Mennicy',hp:3000,atk:60,def:38,dex:10,spd:8,xp:3000,gold:1200,boss:true,elite:true,limited:true,limitedDrop:'mlot_mennicy',
+    res:{slash:.5,pierce:.5,blunt:1.0,dark:.7},drops:{},bg:'night',spr:{gen:'koszmar',seed:9201,scale:2},
+    acts:[{w:3,kind:'attack',pow:2.0,type:'blunt',name:'Złoty Obuch'},
+      {w:2,kind:'attack',pow:2.4,type:'blunt',target:'all',status:'stun',ch:.4,name:'Trzęsienie Skarbca'},
+      {w:1,kind:'guard',name:'Złota Bezwładność'}],
+    phase:{at:.35,say:'Golem Mennicy rozżarza się do czerwoności — każdy cios pali jak roztopione złoto!',buff:{atk:1.4}},
+    desc:'Strażnik skarbca, który przeżył upadek czasu. Twardy jak sztaba kruszcu.'},
+  lim_tkacz:{name:'Tkacz Eonów',hp:2200,atk:58,def:26,dex:22,spd:16,xp:3000,gold:700,boss:true,elite:true,limited:true,limitedDrop:'pajeczy_pancerz',
+    res:{slash:.7,pierce:.6,blunt:.9,dark:.5},drops:{},bg:'night',spr:{gen:'kukielkarz',seed:9301,scale:2},
+    acts:[{w:3,kind:'attack',pow:1.7,type:'pierce',name:'Nici Czasu'},
+      {w:2,kind:'attack',pow:1.4,type:'dark',target:'all',status:'poison',ch:.6,name:'Sieć Eonów'},
+      {w:2,kind:'attack',pow:1.6,type:'slash',status:'stun',ch:.45,name:'Szarpnięcie Marionety'}],
+    phase:{at:.4,say:'Tkacz Eonów oplata pole bitwy nićmi — sieć zaciska się!',buff:{spd:1.3,atk:1.25}},
+    desc:'Snuje los z nici czasu. Zwinny i jadowity.'},
+  lim_zjawa:{name:'Zjawa z Lustra',hp:2300,atk:62,def:28,dex:20,spd:14,xp:3000,gold:800,boss:true,elite:true,limited:true,limitedDrop:'lustrzany_sygnet',
+    res:{slash:.6,pierce:.6,blunt:1.0,dark:.3,fire:1.2},drops:{},bg:'night',spr:{gen:'zloty_praojciec',seed:9401,scale:2},
+    acts:[{w:3,kind:'attack',pow:2.0,type:'dark',name:'Odbicie Losu'},
+      {w:2,kind:'attack',pow:1.6,type:'dark',target:'all',status:'fear',ch:.5,name:'Pęknięte Lustro'},
+      {w:1,kind:'buff',buff:{def:1.5},dur:3,name:'Tafla Lustra'}],
+    phase:{at:.4,say:'Zjawa z Lustra rozszczepia się na tuziny odbić — które jest prawdziwe?',buff:{atk:1.35}},
+    desc:'Echo kogoś, kto utknął między taflami czasu.'},
+  lim_bestia:{name:'Bestia Otchłani',hp:2600,atk:66,def:30,dex:16,spd:13,xp:3200,gold:900,boss:true,elite:true,limited:true,limitedDrop:'kly_otchlani',
+    res:{slash:.7,pierce:.7,blunt:.8,dark:.5},drops:{},bg:'night',spr:{gen:'werewolf',seed:9501,scale:2},
+    acts:[{w:4,kind:'attack',pow:1.9,type:'slash',name:'Szpony Otchłani'},
+      {w:2,kind:'attack',pow:1.5,type:'pierce',target:'all',status:'bleed',ch:.6,name:'Ryk Pustki'},
+      {w:2,kind:'attack',pow:2.2,type:'slash',status:'stun',ch:.4,name:'Powalenie'}],
+    phase:{at:.35,say:'Bestia Otchłani wpada w ślepą furię — jej ciosy stają się nieobliczalne!',buff:{atk:1.45,spd:1.2}},
+    desc:'Coś, co czas wypluł z dna otchłani. Głodne i wściekłe.'},
+});
+
+let _lastRiftToast=-1;
+function limitedWindow(){return Math.floor(Date.now()/(3*3600*1000));} // okno 3-godzinne
+const LIMITED_BOSSES=['lim_kosiarz','lim_golem','lim_tkacz','lim_zjawa','lim_bestia'];
+const LIMITED_SPOTS=[
+  {map:'wioska',x:10,y:7},
+  {map:'circus',x:16,y:8},
+  {map:'kasyno',x:14,y:9},
+  {map:'croydon',x:13,y:8},
+  {map:'wioska',x:12,y:16},
+  {map:'zaslona',x:24,y:24},
+];
+function currentLimited(){const w=limitedWindow();return {w,boss:LIMITED_BOSSES[w%LIMITED_BOSSES.length],spot:LIMITED_SPOTS[w%LIMITED_SPOTS.length]};}
+function ensureLimitedRift(){
+  const o=currentLimited(),w=o.w,spot=o.spot;
+  for(const k in MAPS){const arr=MAPS[k]&&MAPS[k].objects;if(arr)for(let i=arr.length-1;i>=0;i--)if(arr[i]&&arr[i]._rift)arr.splice(i,1);}
+  if(MAPS[spot.map]&&MAPS[spot.map].objects)
+    MAPS[spot.map].objects.push({type:'prop',p:'time_rift',x:spot.x,y:spot.y,script:'limited_boss',notFlag:'limited_done_'+w,_rift:true});
+  if(spot.map===G.mapId && !(G.flags&&G.flags['limited_done_'+w]) && _lastRiftToast!==w){
+    _lastRiftToast=w;if(typeof pushToast==='function')pushToast('Czujesz rozdarcie czasu w pobliżu — limitowany potwór!','skull');
+  }
+}
+Object.assign(SCRIPTS,{
+  limited_boss:()=>{
+    const o=currentLimited(),w=o.w,boss=o.boss;
+    if(G.flags&&G.flags['limited_done_'+w])return [{say:['','Rozdarcie czasu zabliźnia się. Tego limitowanego potwora już pokonałeś — nowy pojawi się za parę godzin, w innym miejscu.']}];
+    const b=ENEMIES[boss],drop=b.limitedDrop;
+    return [
+      {say:['','Powietrze pęka jak tafla lodu. Z rozdarcia czasu wychodzi LIMITOWANY potwór — '+b.name+'. Bywa tu tylko raz na trzy godziny.']},
+      {choice:[
+        {t:'Walcz: '+b.name,do:[
+          {battle:{group:[boss],bg:b.bg||'night',music:'boss',boss:true,canFlee:false,
+            onWin:[
+              {flag:'limited_done_'+w},
+              {run:()=>{if(drop){addItem(drop);pushToast('LIMITED: '+ITEMS[drop].name,ITEMS[drop].icon);} ensureLimitedRift();}},
+              {say:['','Rozdarcie zamyka się z hukiem. Zostaje '+(drop?ITEMS[drop].name:'łup')+' — przedmiot LIMITOWANY, którego nie zdobędzie nikt spóźniony.']},
+            ],
+          }},
+        ]},
+        {t:'Jeszcze nie',do:[{say:['','Cofasz się o krok. Rozdarcie pulsuje, czekając.']}]},
+      ]},
+    ];
+  },
+});
+// ——— KOSTUN: NPC z 30 trudnymi questami → rekrutacja najlepszej postaci ———
+function ensureKostun(){if(!G.kostun||typeof G.kostun!=='object')G.kostun={done:0};}
+const _ktKills=()=>Object.values((G.counters&&G.counters.kills)||{}).reduce((a,b)=>a+b,0);
+const _ktLvl=()=>Math.max(1,...(G.party.length?G.party.map(h=>h.level||1):[1]));
+const _ktLimited=()=>Object.keys(G.flags||{}).filter(k=>k.indexOf('limited_done_')===0).length;
+const _ktBossFlags=['twierdza_boss','katedra_done','rotmistrz_done','finale_done','chipper_done','jester_done','pajac_done'];
+const _ktBosses=()=>_ktBossFlags.filter(f=>G.flags&&G.flags[f]).length;
+const _ktArena=()=>(G.arena&&G.arena.wins)||0;
+const KOSTUN_QUESTS=[
+  {t:'Zbierz pierwsze żniwo: pokonaj 20 wrogów.',ch:()=>_ktKills()>=20},
+  {t:'Pokonaj 50 wrogów ostrzem i prochem.',ch:()=>_ktKills()>=50},
+  {t:'Osiągnij 8. poziom drużyny.',ch:()=>_ktLvl()>=8},
+  {t:'Pokonaj 100 wrogów.',ch:()=>_ktKills()>=100},
+  {t:'Zdobądź pierwszego bossa fabuły (twierdza).',ch:()=>!!(G.flags&&G.flags.twierdza_boss)},
+  {t:'Uzbieraj 1000 srebra naraz.',ch:()=>G.gold>=1000},
+  {t:'Pokonaj 200 wrogów.',ch:()=>_ktKills()>=200},
+  {t:'Osiągnij 12. poziom drużyny.',ch:()=>_ktLvl()>=12},
+  {t:'Wygraj 3 walki na Arenie.',ch:()=>_ktArena()>=3},
+  {t:'Pokonaj 2 bossów świata.',ch:()=>_ktBosses()>=2},
+  {t:'Zakręć automatem w kasynie 100 razy.',ch:()=>(G.slotSpins||0)>=100},
+  {t:'Pokonaj 350 wrogów.',ch:()=>_ktKills()>=350},
+  {t:'Osiągnij 16. poziom drużyny.',ch:()=>_ktLvl()>=16},
+  {t:'Załóż albo dołącz do gildii.',ch:()=>!!G.guild},
+  {t:'Pokonaj 3 bossów świata.',ch:()=>_ktBosses()>=3},
+  {t:'Wygraj 10 walk na Arenie.',ch:()=>_ktArena()>=10},
+  {t:'Pokonaj 1 limitowanego bossa (rozdarcie czasu).',ch:()=>_ktLimited()>=1},
+  {t:'Osiągnij 20. poziom drużyny.',ch:()=>_ktLvl()>=20},
+  {t:'Pokonaj 500 wrogów.',ch:()=>_ktKills()>=500},
+  {t:'Wprowadź gildię na 3. poziom.',ch:()=>!!(G.guild&&G.guild.level>=3)},
+  {t:'Pokonaj Mr. Chippera (Dusting Fields).',ch:()=>!!(G.flags&&G.flags.chipper_done)},
+  {t:'Pokonaj 2 limitowane bossy.',ch:()=>_ktLimited()>=2},
+  {t:'Osiągnij 25. poziom drużyny.',ch:()=>_ktLvl()>=25},
+  {t:'Wygraj 25 walk na Arenie.',ch:()=>_ktArena()>=25},
+  {t:'Pokonaj 800 wrogów.',ch:()=>_ktKills()>=800},
+  {t:'Zakręć automatem 500 razy.',ch:()=>(G.slotSpins||0)>=500},
+  {t:'Pokonaj 4 bossów świata.',ch:()=>_ktBosses()>=4},
+  {t:'Pokonaj 3 limitowane bossy.',ch:()=>_ktLimited()>=3},
+  {t:'Osiągnij 30. poziom drużyny.',ch:()=>_ktLvl()>=30},
+  {t:'Ostatnie żniwo: pokonaj 1200 wrogów.',ch:()=>_ktKills()>=1200},
+];
+const KOSTUN_REWARDS={4:'topor_zniw',7:'kosiec_widm',11:'pila_grobowa',14:'szpada_cieni',17:'rdzen_trumny',21:'calun_pancerz',24:'kosciany_sygnet'};
+class KostunScene{
+  constructor(){this.overlay=true;ensureKostun();this.scroll=Math.max(0,Math.min(G.kostun.done-1,KOSTUN_QUESTS.length-7));this.scroll=Math.max(0,this.scroll);this.msg=null;}
+  claim(){
+    ensureKostun();const i=G.kostun.done;
+    if(i>=KOSTUN_QUESTS.length){this.msg={t:'Wszystkie żniwa zebrane. Kostun już z Tobą.',c:'#8ad07a'};return;}
+    const q=KOSTUN_QUESTS[i];
+    if(!q.ch()){this.msg={t:'To zadanie nie jest jeszcze wykonane.',c:'#e85a4a'};AudioSys.sfx('cancel');return;}
+    G.kostun.done++;AudioSys.sfx('levelup');
+    if(i===29){
+      if(!G.party.some(h=>h.id==='kostun')&&G.party.length<7){
+        const h=mkHero('kostun',Math.max(1,_ktLvl()));h.equip.weapon='kosa_kostuna';h.equip.armor='calun_pancerz';
+        G.party.push(h);if(typeof rebuildHeroSprites==='function')rebuildHeroSprites(h);
+        flash('#6a2a8a',.8);shake(8);this.msg={t:'KOSTUN dołącza do drużyny — Pan Kosy jest Twój!',c:'#c08ad8'};
+        pushToast('KOSTUN dołącza do drużyny!','heart');
+      } else this.msg={t:'Kostun gotów, lecz drużyna jest pełna (max 7).',c:'#e0c040'};
+    } else if(i===27){giveGold(1500);this.msg={t:'Kostun płaci: +1500 srebra.',c:'#e0c040'};pushToast('Otrzymano: 1500 srebra','gold');}
+    else if(KOSTUN_REWARDS[i]){const it=KOSTUN_REWARDS[i];addItem(it);this.msg={t:'Nagroda: '+ITEMS[it].name+' (LIMITED)',c:'#f0d050'};pushToast('Otrzymano: '+ITEMS[it].name,ITEMS[it].icon);}
+    else this.msg={t:'Zadanie zaliczone. Kostun kiwa głową.',c:'#8ad07a'};
+    if(G.kostun.done>this.scroll+6)this.scroll=Math.min(Math.max(0,KOSTUN_QUESTS.length-7),G.kostun.done-3);
+    if(!(G.flags&&G.flags.sandbox))saveGame(0);
+  }
+  key(a){
+    if(a==='cancel'){popScene();return;}
+    if(a==='up')this.scroll=Math.max(0,this.scroll-1);
+    else if(a==='down')this.scroll=Math.min(Math.max(0,KOSTUN_QUESTS.length-7),this.scroll+1);
+    else if(a==='ok')this.claim();
+  }
+  draw(){
+    ctx.fillStyle='rgba(8,6,14,.94)';ctx.fillRect(0,0,W,H);
+    panel(20,10,W-40,26);txt('KOSTUN — PAN KOSY',34,18,'#c08ad8',11);
+    txt('Żniwa: '+G.kostun.done+' / '+KOSTUN_QUESTS.length,W-150,20,'#f0d9a3',8);
+    const done=G.kostun.done;
+    for(let v=0;v<7;v++){const i=this.scroll+v;if(i>=KOSTUN_QUESTS.length)break;
+      const q=KOSTUN_QUESTS[i],y=46+v*23;
+      let st,col;
+      if(i<done){st='✓';col='#8ad07a';}
+      else if(i===done){const rdy=q.ch();st=rdy?'►':'…';col=rdy?'#f0d050':'#c9a35a';if(i===done){ctx.fillStyle='rgba(154,90,216,.14)';ctx.fillRect(24,y-3,W-48,21);}}
+      else{st='·';col='#5e5648';}
+      txt(st+' '+(i+1)+'. '+q.t,34,y,col,8);
+      if(KOSTUN_REWARDS[i])txt('» '+ITEMS[KOSTUN_REWARDS[i]].name,42,y+10,'#a07820',7);
+      else if(i===29)txt('» KOSTUN dołącza do drużyny',42,y+10,'#c08ad8',7);
+      else if(i===27)txt('» 1500 srebra',42,y+10,'#a07820',7);
+    }
+    if(this.msg){const w=txtW(this.msg.t,8)+24;panel(W/2-w/2,H-52,w,16,.9);txt(this.msg.t,W/2,H-48,this.msg.c,8,'center');}
+    txt('▲▼ przewijaj   Z odbierz aktywne żniwo   X wyjście',W/2,H-22,'#8d8270',7,'center');
+  }
+}
+Object.assign(SCRIPTS,{
+  kostun:()=>{
+    ensureKostun();
+    if(G.party.some(h=>h.id==='kostun'))return [{say:['kostun','Idę już z Tobą, śmiałku. Kosa nie zna spoczynku.']}];
+    return [
+      {say:['kostun','Stój. Widzę na Tobie znak śmierci — jak na każdym, kto za dużo przeżył.']},
+      {say:['kostun','Jestem Kostun. Daję trudne żniwa i jeszcze trudniejsze nagrody. Zbierz plon trzydzieści razy, a oddam Ci to, czym jestem — siebie.']},
+      {choice:[
+        {t:'Zobacz tablicę żniw',do:[{board:'kostun'}]},
+        {t:'Odejdź',do:[{say:['kostun','Śmierć poczeka. Ona ma czas. Ty — coraz mniej.']}]},
+      ]},
+    ];
+  },
+});
+MAPS.wioska.objects.push(
+  {type:'prop',p:'kostun_npc',x:11,y:17,script:'kostun'},
+  {type:'sign',skull:true,x:12,y:17,text:'Kapturowa postac z kosa stoi przy grobach. Daje trudne zlecenia. Mowia, ze sam jest nagroda.'}
+);
+// ——— PROPSY KASYNA / RIFTU / KOSTUNA (pixel art) ———
+function blackjackTablePix(){
+  const p=new Pix(26,18);
+  p.frect(4,15,18,3,0x2a1a10);
+  p.ellipse(13,9,12,7,0x1f7a44);p.ellipse(13,8,10,5,0x2a9a58);
+  p.line(3,9,23,9,0xe8d59a);
+  p.frect(9,7,4,5,0xf4f0e6);p.frect(13,7,4,5,0xf4f0e6);
+  p.set(10,8,0xc83030);p.set(14,8,0x1a1410);
+  p.shade(.6);p.outline(0x10100a);return p;
+}
+function rouletteTablePix(){
+  const p=new Pix(24,20);
+  p.frect(3,16,18,4,0x2a1a10);
+  p.ellipse(12,9,9,7,0x3a2a14);p.ellipse(12,9,8,6,0x101018);
+  for(let i=0;i<16;i++){const a=i/16*Math.PI*2,x=12+Math.cos(a)*7,y=9+Math.sin(a)*5;p.set(Math.round(x),Math.round(y),(i%2)?0xc33030:0x40404a);}
+  p.ellipse(12,9,2,1.6,0xe8c050);
+  p.shade(.5);p.outline(0x10100a);return p;
+}
+function slotPropPix(body,bodyD){
+  const p=new Pix(14,22);
+  p.frect(2,18,10,4,0x1a1410);
+  p.frect(1,2,12,17,body);p.frect(1,2,12,2,lit(body,.3));p.frect(1,17,12,2,bodyD);
+  p.frect(2,4,10,2,0xe8c050);
+  for(let i=0;i<3;i++){p.frect(2+i*3,8,2,5,0xf0ece0);p.set(2+i*3,10,[0xd83028,0x48c8e8,0x9428d8][i]);}
+  p.frect(2,7,10,1,0xe8c050);
+  p.line(13,9,13,13,0x6a6a72);p.set(13,8,0xe85a5a);
+  p.shade(.55);p.outline(0x100c08);return p;
+}
+function casinoDoorPix(){
+  const p=new Pix(18,24);
+  p.frect(1,4,16,20,0x3a2418);p.frect(1,4,16,2,0x5a3a22);p.ellipse(9,5,8,4,0x3a2418);
+  p.frect(4,8,10,16,0x6a1818);p.frect(4,8,10,2,0x8a2424);p.frect(8,8,2,16,0x3a0e0e);
+  p.frect(3,2,12,3,0xe8c050);p.set(6,3,0x8a6c10);p.set(11,3,0x8a6c10);
+  p.set(7,16,0xe8c050);p.set(11,16,0xe8c050);
+  p.shade(.6);p.outline(0x0e0a06);return p;
+}
+function timeRiftPix(frame){
+  const p=new Pix(16,26);const wob=[0,1,-1][frame%3];
+  for(let y=2;y<24;y++){
+    const wHalf=2+Math.round(Math.sin(y*0.5+frame)*1.4)+((y>10&&y<16)?1:0);
+    for(let x=8-wHalf;x<=8+wHalf;x++){
+      const c=(x===8)?0xf0e0ff:((Math.abs(x-8)<=1)?0x9a5ad8:0x4a2a6a);
+      p.set(x+wob,y,c);
+    }
+  }
+  p.set(8+wob,2,0xfff0ff);p.set(8-wob,24,0xfff0ff);
+  p.set(6,8+(frame%3)*2,0xe0b0ff);p.set(10,16-(frame%3)*2,0xe0b0ff);
+  p.outline(0x1a0a2a);return p;
+}
+
+// ——— BUDOWA SPRITE'ÓW I PROPSÓW (po init) ———
+makeKostunHero();makeGriefHero();
+for(const id of ['lim_kosiarz','lim_golem','lim_tkacz','lim_zjawa','lim_bestia'])IMG.enemies[id]=enemySprite(ENEMIES[id].spr);
+IMG.props.blackjack_table=propFromPix(blackjackTablePix());
+IMG.props.roulette_table=propFromPix(rouletteTablePix());
+IMG.props.slot_red=propFromPix(slotPropPix(0xc83838,0x8e2424));
+IMG.props.slot_gold=propFromPix(slotPropPix(0xc8a020,0x8a6c10));
+IMG.props.slot_blue=propFromPix(slotPropPix(0x3060c0,0x1e3e8a));
+IMG.props.slot_purple=propFromPix(slotPropPix(0x7028b8,0x4a1880));
+IMG.props.slot_green=propFromPix(slotPropPix(0x208a4a,0x106030));
+IMG.props.slot_black=propFromPix(slotPropPix(0x2a2a32,0x16161c));
+IMG.props.casino_door=propFromPix(casinoDoorPix());
+IMG.props.kostun_npc=propFromPix(kostunHeroPix('idle',0));
+IMG.props.time_rift=[timeRiftPix(0),timeRiftPix(1),timeRiftPix(2)].map(q=>propFromPix(q));
+if(typeof PORTRAIT_X!=='undefined'){PORTRAIT_X.kostun=kostunPortraitPix().toCanvas();PORTRAIT_X.grief=griefPortraitPix().toCanvas();}
+if(typeof DISPLAY_NAMES!=='undefined'){DISPLAY_NAMES.kostun='Kostun';DISPLAY_NAMES.grief='Grief';}
+if(typeof G!=='undefined'&&G.mapId&&typeof ensureLimitedRift==='function')ensureLimitedRift();
+
+// ——— KRONIKA AKTUALIZACJI: nowy wpis ———
+if(typeof CHANGELOG!=='undefined')CHANGELOG.unshift({v:'Pieśń IV',t:'Kostun, Kasyno i Limitowani',d:'KOSTUN — Pan Kosy: przy grobach w wiosce daje 30 trudnych żniw, a po drodze sypie unikatami (LIMITED: Topór Żniw, Kosiec Widm, Piła Grobowa, Szpada Cieni, Rdzeń Trumny, Pancerz Całunowy, Kościany Sygnet). Za 30. żniwo DOŁĄCZA jako najlepsza postać — glass cannon z pasywką Nieśmiertelny (raz na walkę wstaje z połową HP) i technikami Szeroki Pokos, Pochłonięcie Duszy i Kostny Całun. LIMITOWANI BOSSOWIE: co 3 godziny w innym miejscu na mapie otwiera się Rozdarcie Czasu z bardzo trudnym, unikatowym bossem (Kosiarz Eonów, Golem Mennicy, Tkacz Eonów, Zjawa z Lustra, Bestia Otchłani) — każdy daje przedmiot ze złotym, świecącym znacznikiem „Limited". KASYNO „Złota Kość" (wejście w wiosce): dopracowany BlackJack, Ruletka i sześć kolorowych automatów — każdy kolor to inny unikat z szansą 0.01%. Zakręć automatami łącznie 2500 razy, a do drużyny dołączy GRIEF — chibi automat-człowiek, jedna z najlepszych postaci (Zakład o Życie, Jackpot, Rzut Monetą). Szyk pola bitwy obsługuje teraz do siedmiu bohaterów.'});
+//==================================================================================
+//  LUKSUSOWE KASYNO „VEGAS" — przebudowa (kafelki, propsy, eleganccy NPC)
+//==================================================================================
+(function(){
+  const T=IMG.tiles;
+  const mk16=(seed,fn)=>{const p=new Pix(16,16),r=RNG(seed);fn(p,r);return p.toCanvas();};
+  // dywan burgundowy ze złotym rombem
+  const casinoFloor=(seed)=>mk16(seed,(p,r)=>{
+    p.frect(0,0,16,16,0x5a1622);
+    for(let i=0;i<22;i++)p.set(r.i(0,15),r.i(0,15),r.chance(.5)?0x4e1220:0x661a2a);
+    p.line(8,3,11,8,0x9c7424);p.line(11,8,8,13,0x9c7424);p.line(8,3,5,8,0x9c7424);p.line(5,8,8,13,0x9c7424);
+    p.set(8,8,0xe8c44a);p.set(8,4,0xb88a2e);p.set(8,12,0xb88a2e);
+  });
+  T.floor_casino=[casinoFloor(2401),casinoFloor(2402)];
+  // ściana: ciemne drewno + złoty gzyms
+  const base=0x2a1418;
+  T.wall_casino={
+    front:mk16(2410,(p,r)=>{
+      p.frect(0,0,16,16,base);p.frect(0,0,16,2,0xb88a2e);p.frect(0,2,16,1,0x8a6620);
+      for(let i=0;i<12;i++)p.set(r.i(0,15),r.i(4,15),r.chance(.5)?dim(base,.15):lit(base,.1));
+      p.frect(3,4,1,11,dim(base,.3));p.frect(8,4,1,11,dim(base,.3));p.frect(13,4,1,11,dim(base,.3));
+      p.frect(0,15,16,1,0x9c7424);
+    }),
+    top:mk16(2411,(p,r)=>{const b=0x3a2228;p.frect(0,0,16,16,b);for(let i=0;i<18;i++)p.set(r.i(0,15),r.i(0,15),r.chance(.5)?dim(b,.1):lit(b,.08));p.frect(0,0,16,1,0xb88a2e);}),
+  };
+  // --- PROPSY KASYNA ---
+  const goldColumn=()=>{const p=new Pix(12,46);
+    p.frect(1,2,10,42,0xb88a2e);p.frect(1,2,3,42,0xe8c44a);p.frect(8,2,2,42,0x8a6620);
+    p.frect(0,0,12,3,0xe8c44a);p.frect(0,43,12,3,0xe8c44a);
+    for(let y=6;y<42;y+=4)p.frect(1,y,10,1,0x8a6620);
+    p.shade(.5);p.outline(0x2a1c08);return p;};
+  const chandelier=(f)=>{const p=new Pix(20,40),g=0xe8c44a;
+    p.frect(9,0,2,10,0x6a5418);
+    p.ellipse(10,16,8,4,0xb88a2e);p.ellipse(10,15,6,2,g);
+    for(let i=0;i<5;i++){const x=2+i*4;p.set(x,18+(i%2),(f%2)?0xfff0b0:g);p.line(x,16,x,18+(i%2),0x8a6620);}
+    p.ellipse(10,13,3,2,g);
+    // poświata
+    return p;};
+  const velvetRope=()=>{const p=new Pix(28,16);
+    p.frect(2,4,2,11,0xb88a2e);p.frect(24,4,2,11,0xb88a2e);
+    p.ellipse(3,3,2,2,0xe8c44a);p.ellipse(25,3,2,2,0xe8c44a);
+    for(let x=4;x<24;x++){const y=8+Math.round(Math.sin((x-4)/20*Math.PI)*3);p.set(x,y,0x9a1828);p.set(x,y+1,0x6a1018);}
+    p.shade(.5);p.outline(0x1a0a0c);return p;};
+  const casinoBar=()=>{const p=new Pix(40,20);
+    p.frect(0,8,40,12,0x3a2418);p.frect(0,8,40,2,0xb88a2e);p.frect(0,6,40,2,0x5a3a22);
+    for(let i=0;i<5;i++){p.frect(4+i*8,2,3,5,[0x48c8e8,0xe85a4a,0xe8c44a,0x8ad07a,0xc060e0][i]);p.set(5+i*8,2,0xffffff);}
+    p.frect(0,18,40,2,0x241810);p.shade(.5);p.outline(0x140c06);return p;};
+  const palm=()=>{const p=new Pix(20,30);
+    p.frect(7,18,5,10,0x6a4a2a);p.frect(7,18,2,10,0x8a6238);
+    p.ellipse(10,26,6,3,0x3a2a1a);
+    for(let i=0;i<7;i++){const a=i/7*Math.PI-0.2;p.line(10,17,10+Math.cos(a)*9,17-Math.sin(a)*8,0x2a7a3a);p.line(10,17,10+Math.cos(a)*8,16-Math.sin(a)*7,0x3a9a4a);}
+    p.shade(.5);p.outline(0x10160c);return p;};
+  const neonCasino=(f)=>{const p=new Pix(30,12),on=(f%2);
+    p.frect(0,0,30,12,0x140810);
+    const c1=on?0xff3a6a:0x7a1a30,c2=on?0xffd84a:0x7a6420;
+    p.frect(2,2,26,3,c1);p.frect(2,7,26,3,c2);
+    for(let x=3;x<27;x+=3){p.set(x,3,on?0xfff0f0:0x9a3a4a);p.set(x,8,on?0xfffadc:0x9a7a2a);}
+    return p;};
+  const fountain=(f)=>{const p=new Pix(22,20);
+    p.ellipse(11,15,10,4,0x3a2a3e);p.ellipse(11,14,8,3,0x2a4a6a);p.ellipse(11,14,6,2,0x4a8ac0);
+    p.frect(10,4,2,9,0xb88a2e);
+    for(let i=0;i<5;i++){const x=8+i+((f+i)%2);p.set(x,5+((f+i)%3),0x9adcf0);}
+    p.shade(.4);p.outline(0x10141a);return p;};
+  const chipStack=()=>{const p=new Pix(12,12);
+    for(let i=0;i<5;i++)p.frect(2,9-i*2,8,2,[0xe85a4a,0x2a2a2e,0x48c8e8,0xe8c44a,0xe85a4a][i]);
+    p.shade(.4);p.outline(0x100c10);return p;};
+  const pokerTable=()=>{const p=new Pix(24,16);
+    p.frect(3,14,18,2,0x2a1a10);
+    p.ellipse(12,8,11,6,0x2a6a3a);p.ellipse(12,7,9,4,0x368a4a);p.line(2,8,22,8,0xb88a2e);
+    p.frect(8,6,3,4,0xf4f0e6);p.frect(12,6,3,4,0xf4f0e6);p.set(9,7,0xc83030);
+    for(let i=0;i<3;i++)p.frect(15,5+i,2,1,[0xe85a4a,0x48c8e8,0xe8c44a][i]);
+    p.shade(.5);p.outline(0x10120a);return p;};
+  IMG.props.gold_column=propFromPix(goldColumn());
+  IMG.props.chandelier=[chandelier(0),chandelier(1),chandelier(0)].map(q=>propFromPix(q,false));
+  IMG.props.velvet_rope=propFromPix(velvetRope(),false);
+  IMG.props.casino_bar=propFromPix(casinoBar());
+  IMG.props.palm_plant=propFromPix(palm());
+  IMG.props.neon_casino=[neonCasino(0),neonCasino(1),neonCasino(0)].map(q=>propFromPix(q,false));
+  IMG.props.fountain=[fountain(0),fountain(1),fountain(2)].map(q=>propFromPix(q));
+  IMG.props.chip_stack=propFromPix(chipStack(),false);
+  IMG.props.poker_table=propFromPix(pokerTable());
+  // --- ELEGANCCY NPC ---
+  const CASINO_NPCS={
+    krupier_vip:{skin:0xd8b48a,hair:0x1a1a1e,hairStyle:0,top:0x16161c,top2:0xe8e4dc,pants:0x16161c,boots:0x0c0c10,weapon:'none'},
+    bramkarz:{skin:0x9a7048,hair:0x14140f,hairStyle:0,top:0x1c1c22,top2:0x101014,pants:0x1c1c22,boots:0x0a0a0c,weapon:'none',scar:true},
+    tancerka:{skin:0xe0bc92,hair:0x3a1c10,hairStyle:1,top:0xd83a6a,top2:0xf0c84a,pants:0x9a2850,boots:0xf0c84a,weapon:'none'},
+    barman_vip:{skin:0xc89a6a,hair:0x2a2018,hairStyle:0,top:0x3a2a4a,top2:0xe8e4dc,pants:0x20202a,boots:0x101014,weapon:'none'},
+    grubaryba:{skin:0xd0aa80,hair:0x55504a,hairStyle:4,top:0x2a2030,top2:0xc8a83a,pants:0x201828,boots:0x100c14,weapon:'none'},
+    dama_zlota:{skin:0xe4c49a,hair:0x6a3a1a,hairStyle:1,top:0xc8a83a,top2:0x8a6a20,pants:0xa08428,boots:0x6a5418,weapon:'none'},
+  };
+  for(const id in CASINO_NPCS)IMG.npcs[id]={walk:walkSheet(CASINO_NPCS[id]),portrait:portraitPix(CASINO_NPCS[id]).toCanvas()};
+  if(typeof DISPLAY_NAMES!=='undefined')Object.assign(DISPLAY_NAMES,{krupier_vip:'Krupier Salvatore',bramkarz:'Bramkarz Bruno',tancerka:'Tancerka Lola',barman_vip:'Barman Vito',grubaryba:'Gruba Ryba',dama_zlota:'Złota Dama'});
+  if(typeof NPC_DLG!=='undefined')Object.assign(NPC_DLG,{
+    krupier_vip:()=>[{say:['krupier_vip','Witam w »Złotej Kości«, najwytworniejszym kasynie po tej stronie zasłony. Stół czeka — i fortuna też.']}],
+    bramkarz:()=>[{say:['bramkarz','Garnitur, srebro i maniery. Dwa z trzech masz. Wchodź, ale bez awantur.']}],
+    tancerka:()=>[{say:['tancerka','Światła, złoto, brzęk żetonów... Tu każda noc trwa wiecznie, skarbie.']}],
+    barman_vip:()=>[{say:['barman_vip','Co podać? Okowita »Jackpot« leje się tylko dla wygranych. Reszta pije wodę.']}],
+    grubaryba:()=>[{say:['grubaryba','Postawiłem dom na czerwone. Dom przegrał. Ale jaki to był wieczór!']}],
+    dama_zlota:()=>[{say:['dama_zlota','Złoto pasuje mi do oczu, nie sądzisz? Wygraj dużo, a może zatańczę.']}],
+  });
+  // --- MAPA: nowy, większy parkiet ---
+  function genKasynoLux(){
+    const w=34,h=22,g=[];
+    for(let y=0;y<h;y++){const row=[];for(let x=0;x<w;x++)row.push((x===0||y===0||x===w-1||y===h-1)?'#':'f');g.push(row);}
+    // kolumny (filary) parami
+    [[5,5],[28,5],[5,16],[28,16],[12,10],[21,10]].forEach(([x,y])=>g[y][x]='#');
+    g[h-1][16]='f';g[h-1][17]='f';   // próg wyjścia
+    return g.map(r=>r.join(''));
+  }
+  MAPS.kasyno={name:'Kasyno „Złota Kość"',music:'circus',pad:'#',floor:'floor_casino',wall:'wall_casino',grid:genKasynoLux(),objects:[
+    // żyrandole i kolumny
+    {type:'prop',p:'chandelier',x:11,y:5,nosolid:true},{type:'prop',p:'chandelier',x:22,y:5,nosolid:true},{type:'prop',p:'chandelier',x:17,y:11,nosolid:true},
+    {type:'prop',p:'gold_column',x:5,y:5},{type:'prop',p:'gold_column',x:28,y:5},{type:'prop',p:'gold_column',x:5,y:16},{type:'prop',p:'gold_column',x:28,y:16},
+    {type:'prop',p:'neon_casino',x:14,y:2,nosolid:true},{type:'prop',p:'neon_casino',x:19,y:2,nosolid:true},
+    // ruletka — pit centralny
+    {type:'prop',p:'roulette_table',x:17,y:7,script:'roulette'},
+    {type:'prop',p:'velvet_rope',x:15,y:9,nosolid:true},{type:'prop',p:'velvet_rope',x:19,y:9,nosolid:true},
+    // blackjack i poker
+    {type:'prop',p:'blackjack_table',x:9,y:8,script:'blackjack'},
+    {type:'prop',p:'blackjack_table',x:25,y:8,script:'blackjack'},
+    {type:'prop',p:'poker_table',x:9,y:14,nosolid:false},{type:'prop',p:'poker_table',x:25,y:14,nosolid:false},
+    {type:'prop',p:'chip_stack',x:10,y:13,nosolid:true},{type:'prop',p:'chip_stack',x:24,y:13,nosolid:true},
+    // rząd kolorowych automatów (góra i dół)
+    {type:'prop',p:'slot_red',x:3,y:3,script:'slot_red'},
+    {type:'prop',p:'slot_gold',x:3,y:9,script:'slot_gold'},
+    {type:'prop',p:'slot_blue',x:3,y:13,script:'slot_blue'},
+    {type:'prop',p:'slot_purple',x:30,y:3,script:'slot_purple'},
+    {type:'prop',p:'slot_green',x:30,y:9,script:'slot_green'},
+    {type:'prop',p:'slot_black',x:30,y:13,script:'slot_black'},
+    // bar + palmy + fontanna
+    {type:'prop',p:'casino_bar',x:16,y:18},
+    {type:'prop',p:'palm_plant',x:2,y:18,nosolid:true},{type:'prop',p:'palm_plant',x:31,y:18,nosolid:true},
+    {type:'prop',p:'palm_plant',x:2,y:2,nosolid:true},{type:'prop',p:'palm_plant',x:31,y:2,nosolid:true},
+    {type:'prop',p:'fountain',x:17,y:15},
+    // eleganccy NPC
+    {type:'npc',npc:'krupier_vip',x:17,y:8,dlg:'krupier_vip',static:true},
+    {type:'npc',npc:'bramkarz',x:16,y:20,dlg:'bramkarz',static:true},
+    {type:'npc',npc:'tancerka',x:13,y:16,dlg:'tancerka'},
+    {type:'npc',npc:'barman_vip',x:19,y:18,dlg:'barman_vip',static:true},
+    {type:'npc',npc:'grubaryba',x:25,y:9,dlg:'grubaryba',static:true},
+    {type:'npc',npc:'dama_zlota',x:9,y:9,dlg:'dama_zlota',static:true},
+    {type:'sign',x:14,y:13,text:'KASYNO Zlota Kosc. Kazdy kolorowy automat = inny unikat (0.01%). Zakrec lacznie 2500 razy, a poznasz Griefa.'},
+    {type:'exit',x:16,y:21,to:'wioska',tx:26,ty:6,dir:'down'},
+    {type:'exit',x:17,y:21,to:'wioska',tx:26,ty:6,dir:'down'},
+  ]};
+})();
+//==================================================================================
+//  CROYDON — GANGSTERSKIE BLOKI (urbanistyka + gangsterzy w kominiarkach)
+//==================================================================================
+// sprite gangstera (czarna kurtka + kominiarka + nóż lub gnat), zwrócony w prawo
+function gangsterPix(d,frame){
+  const p=new Pix(30,26);
+  const atk=d.attack, f1=frame===1;
+  const jacket=d.jacket||0x18181e, jacketL=lit(jacket,.12), jacketD=dim(jacket,.3);
+  const pants=0x202028, boot=0x0e0e12, mask=0x141418, skin=0xc89a6a;
+  const oy=(!atk&&f1)?1:0;
+  p.frect(11,19+oy,3,5,pants);p.frect(15,19+oy,3,5,pants);
+  p.frect(11,23+oy,4,2,boot);p.frect(15,23+oy,4,2,boot);
+  p.frect(9,9+oy,11,11,jacket);p.frect(9,9+oy,11,2,jacketL);
+  p.frect(13,9+oy,2,11,jacketD);p.frect(9,9+oy,2,11,jacketD);p.frect(18,9+oy,2,11,jacketD);
+  p.set(14,12+oy,0xb0b0b8);
+  p.frect(11,8+oy,7,2,jacketD);
+  p.ellipse(14,5+oy,4,4,mask);p.frect(11,3+oy,7,5,mask);
+  p.frect(12,5+oy,5,1,skin);p.set(13,5+oy,0x101014);p.set(15,5+oy,0x101014);
+  p.frect(9,10+oy,2,5,jacketD);
+  if(d.gun){
+    const ex=atk?(f1?6:4):2;
+    p.frect(19,11+oy,3,2,jacketL);
+    p.frect(20+ex,11+oy,5,2,0x2a2a30);p.frect(25+ex,11+oy,3,1,0x3a3a42);p.frect(20+ex,12+oy,1,3,0x1a1a20);
+    if(atk&&f1){p.frect(28,10+oy,2,3,0xffe060);p.set(29,11+oy,0xfff0a0);}
+  } else {
+    const ex=atk?(f1?5:2):1;
+    p.frect(19,12+oy,3,2,jacketL);
+    p.line(21+ex,14+oy,26+ex,9+oy,0xd8dce4);p.line(21+ex,14+oy,25+ex,10+oy,0xf0f4fa);
+    p.frect(20+ex,13+oy,2,2,0x4a3a2a);
+  }
+  p.set(12,11+oy,0xe8c44a);p.set(13,12+oy,0xe8c44a);p.set(14,11+oy,0xe8c44a); // złoty łańcuch
+  p.shade(.6);p.outline(0x0a0a0e);
+  return p;
+}
+(function(){
+  const T=IMG.tiles;
+  const mk16=(seed,fn)=>{const p=new Pix(16,16),r=RNG(seed);fn(p,r);return p.toCanvas();};
+  // asfalt
+  T.asphalt=[0,1].map(k=>mk16(2420+k,(p,r)=>{
+    p.frect(0,0,16,16,0x26262a);
+    for(let i=0;i<40;i++)p.set(r.i(0,15),r.i(0,15),r.pick([0x202024,0x2c2c30,0x1c1c20,0x303036]));
+    if(r.chance(.4)){const x=r.i(2,12),y=r.i(2,12);p.line(x,y,x+r.i(1,3),y+r.i(0,2),0x18181c);}
+    if(k===1)for(let i=0;i<2;i++)p.set(r.i(2,13),r.i(2,13),0x3a3a30);
+  }));
+  // mur betonowy (front/top)
+  T.wall_concrete={
+    front:mk16(2430,(p,r)=>{const b=0x5a5a60;p.frect(0,0,16,16,b);
+      for(let i=0;i<16;i++)p.set(r.i(0,15),r.i(0,15),r.chance(.5)?dim(b,.14):lit(b,.08));
+      p.frect(3,3,3,4,0x20242c);p.frect(10,3,3,4,0x20242c);p.frect(3,10,3,4,0x20242c);p.frect(10,10,3,4,0x20242c);
+      p.set(4,4,0x3a4654);p.set(11,4,0x3a4654);
+      p.frect(0,0,16,1,lit(b,.14));p.frect(0,15,16,1,dim(b,.25));}),
+    top:mk16(2431,(p,r)=>{const b=0x6a6a70;p.frect(0,0,16,16,b);for(let i=0;i<18;i++)p.set(r.i(0,15),r.i(0,15),r.chance(.5)?dim(b,.1):lit(b,.08));}),
+  };
+  // --- PROPSY MIEJSKIE ---
+  const towerBlock=(seed)=>{const p=new Pix(34,54),r=RNG(seed),b=0x55555c;
+    p.frect(1,2,32,52,b);p.frect(1,2,32,2,lit(b,.12));p.frect(1,52,32,2,dim(b,.3));
+    p.frect(1,2,2,52,dim(b,.2));p.frect(31,2,2,52,dim(b,.2));
+    for(let wy=6;wy<48;wy+=8)for(let wx=4;wx<30;wx+=7){
+      const lit_=r.chance(.45);p.frect(wx,wy,4,5,lit_?0xe8c44a:0x1a2028);if(lit_){p.set(wx+1,wy+1,0xfff0b0);}}
+    p.frect(13,46,8,8,0x20140c);p.frect(14,47,6,7,0x32201a);p.set(19,50,0xe8c44a); // drzwi
+    // graffiti
+    p.frect(4,40,7,3,0xd83a6a);p.frect(22,38,6,3,0x48c8e8);
+    p.shade(.5);p.outline(0x16161a);return p;};
+  const dumpster=()=>{const p=new Pix(18,14);p.frect(1,4,16,9,0x2a5a3a);p.frect(1,4,16,2,0x3a7a4a);p.frect(0,3,18,2,0x204a30);
+    p.frect(2,12,2,2,0x14140e);p.frect(14,12,2,2,0x14140e);p.frect(5,7,8,1,0x1a3a24);p.shade(.5);p.outline(0x0c1810);return p;};
+  const streetlamp=(f)=>{const p=new Pix(12,42);p.frect(5,6,2,36,0x2a2a30);p.frect(4,40,4,2,0x1a1a20);
+    p.frect(3,4,6,3,0x3a3a42);const on=0xffe070;p.ellipse(6,6,2,2,(f%2)?on:0xb89a3a);p.set(6,6,0xfff0b0);p.outline(0x101014);return p;};
+  const chainFence=()=>{const p=new Pix(16,16);for(let x=0;x<16;x+=3)p.line(x,2,x+3,14,0x8a8e96);for(let x=0;x<16;x+=3)p.line(x,14,x+3,2,0x6a6e76);
+    p.frect(1,1,1,14,0x4a4e56);p.frect(14,1,1,14,0x4a4e56);return p;};
+  const hydrant=()=>{const p=new Pix(8,12);p.frect(2,3,4,8,0xc83028);p.frect(2,3,4,1,0xe85a4a);p.frect(1,5,6,1,0x8a1c18);p.frect(3,1,2,2,0x8a1c18);p.frect(1,11,6,1,0x14100a);p.shade(.5);p.outline(0x0c0606);return p;};
+  const trashPile=()=>{const p=new Pix(14,8);p.ellipse(7,6,6,2,0x3a3328);for(let i=0;i<8;i++){const x=2+i,y=3+((i*5)%3);p.set(x,y,[0x6a5a3a,0x4a4a52,0x7a3a3a,0x3a5a3a][i%4]);}p.outline(0x161210);return p;};
+  IMG.props.tower_block=propFromPix(towerBlock(3001));
+  IMG.props.tower_block2=propFromPix(towerBlock(3002));
+  IMG.props.tower_block3=propFromPix(towerBlock(3003));
+  IMG.props.dumpster=propFromPix(dumpster());
+  IMG.props.streetlamp=[streetlamp(0),streetlamp(1),streetlamp(0)].map(q=>propFromPix(q,false));
+  IMG.props.chain_fence=propFromPix(chainFence());
+  IMG.props.hydrant=propFromPix(hydrant());
+  IMG.props.trash_pile=propFromPix(trashPile(),false);
+  // --- WROGOWIE: gangsterzy ---
+  Object.assign(ENEMIES,{
+    gangster_noz:{name:'Gangus z Nożem',hp:170,atk:30,def:10,dex:14,spd:14,xp:80,gold:60,
+      res:{},drops:{bandaz:1},bg:'street',spr:{gen:'gangster',seed:9601,jacket:0x18181e,scale:2},
+      acts:[{w:4,kind:'attack',pow:1.2,type:'pierce',name:'Cios nożem'},{w:2,kind:'attack',pow:1.4,type:'pierce',status:'bleed',ch:.5,name:'Pchnięcie pod żebra'}],
+      desc:'Kaptur, kominiarka, ostrze w rękawie. Tnie szybko i znika w bramie.'},
+    gangster_gun:{name:'Gangus z Gnatem',hp:150,atk:34,def:8,dex:16,spd:13,xp:95,gold:85,
+      res:{},drops:{okowita:1},bg:'street',spr:{gen:'gangster',seed:9602,jacket:0x1a1620,gun:true,scale:2},
+      acts:[{w:4,kind:'attack',pow:1.3,type:'pierce',name:'Strzał'},{w:2,kind:'attack',pow:1.1,type:'pierce',target:'all',status:'bleed',ch:.3,name:'Seria'}],
+      desc:'Czarna kurtka, kominiarka i gnat. Strzela najpierw, gada potem.'},
+    gangster_boss:{name:'Boss Bloków',hp:950,atk:42,def:18,dex:16,spd:13,xp:600,gold:450,boss:true,elite:true,
+      res:{pierce:.85},drops:{opatrunek_p:1},bg:'street',spr:{gen:'gangster',seed:9603,jacket:0x241828,gun:true,scale:2.2},
+      acts:[{w:3,kind:'attack',pow:1.5,type:'pierce',name:'Magnum'},{w:2,kind:'attack',pow:1.3,type:'pierce',target:'all',status:'bleed',ch:.45,name:'Ostrzał bloku'},{w:1,kind:'buff',buff:{atk:1.4,spd:1.3},dur:3,name:'Wezwij wsparcie'}],
+      phase:{at:.4,say:'Boss Bloków gwiżdże — z bram sypią się jego ludzie. Robi się gorąco!',buff:{atk:1.35}},
+      desc:'Król gangsterskich bloków Croydon. Złoty łańcuch, czarna kominiarka, magnum.'},
+  });
+  for(const id of['gangster_noz','gangster_gun','gangster_boss'])IMG.enemies[id]=enemySprite(ENEMIES[id].spr);
+  Object.assign(ENC,{croydon:{rate:.05,music:'boss',bg:'street',
+    day:[['gangster_noz'],['gangster_gun'],['gangster_noz','gangster_noz'],['gangster_gun','gangster_noz'],['gangster_gun','gangster_gun'],['gangster_noz','gangster_noz','gangster_gun']],
+    night:[['gangster_gun','gangster_noz'],['gangster_gun','gangster_gun','gangster_noz'],['gangster_noz','gangster_noz','gangster_noz']]}});
+  // --- TŁO BITEWNE: nocna ulica ---
+  {const BGH=176,c=document.createElement('canvas');c.width=W;c.height=BGH;const g=c.getContext('2d'),r=RNG(7777);
+    for(let y=0;y<120;y++){g.fillStyle=hex(lerpC(0x0a0c14,0x241a2a,y/120));g.fillRect(0,y,W,1);}
+    const gr=g.createRadialGradient(W/2,120,10,W/2,120,170);gr.addColorStop(0,'rgba(180,90,40,.22)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(0,30,W,100);
+    for(let bx=0;bx<W;bx+=24+r.i(0,18)){const bw=22+r.i(0,16),bh=r.i(45,92);g.fillStyle=hex(0x14141c);g.fillRect(bx,120-bh,bw,bh);
+      for(let wy=120-bh+4;wy<118;wy+=7)for(let wx=bx+3;wx<bx+bw-3;wx+=6)if(r.chance(.4)){g.fillStyle=hex(r.chance(.5)?0xe8c44a:0x6a7a8a);g.fillRect(wx,wy,2,3);}}
+    for(let y=120;y<BGH;y++){g.fillStyle=hex(lerpC(0x26262a,0x16161a,(y-120)/(BGH-120)));g.fillRect(0,y,W,1);}
+    for(let x=10;x<W;x+=40){g.fillStyle=hex(0x8a8a6a);g.fillRect(x,150,16,2);}
+    IMG.bg.street=c;}
+  // --- MAPA ---
+  function genCroydonHood(){
+    const w=26,h=18,g=[];
+    for(let y=0;y<h;y++){const row=[];for(let x=0;x<w;x++)row.push((x===0||y===0||x===w-1||y===h-1)?'#':'f');g.push(row);}
+    g[h-1][12]='f';g[h-1][13]='f';   // próg wyjścia
+    return g.map(r=>r.join(''));
+  }
+  MAPS.croydon={name:'Croydon — Bloki',music:'dungeon',pad:'#',floor:'asphalt',wall:'wall_concrete',enc:'croydon',encTiles:['f'],grid:genCroydonHood(),objects:[
+    {type:'prop',p:'tower_block',x:4,y:6},{type:'prop',p:'tower_block2',x:9,y:5},
+    {type:'prop',p:'tower_block3',x:16,y:5},{type:'prop',p:'tower_block',x:21,y:6},
+    {type:'prop',p:'streetlamp',x:7,y:11,nosolid:true},{type:'prop',p:'streetlamp',x:18,y:11,nosolid:true},
+    {type:'prop',p:'dumpster',x:3,y:13},{type:'prop',p:'dumpster',x:22,y:13},
+    {type:'prop',p:'chain_fence',x:6,y:14},{type:'prop',p:'chain_fence',x:7,y:14},{type:'prop',p:'chain_fence',x:18,y:14},{type:'prop',p:'chain_fence',x:19,y:14},
+    {type:'prop',p:'hydrant',x:10,y:12,nosolid:true},{type:'prop',p:'trash_pile',x:15,y:13,nosolid:true},{type:'prop',p:'trash_pile',x:5,y:9,nosolid:true},
+    {type:'sign',skull:true,x:13,y:12,text:'CROYDON. Bloki rzadza sie wlasnym prawem. Czarne kurtki, kominiarki, noze i gnaty. Wejdziesz — wyjdziesz inny. Albo wcale.'},
+    {type:'prop',p:'tower_block2',x:13,y:15,script:'croydon_boss',notFlag:'croydon_boss_done'},
+    {type:'chest',id:'croy_g1',x:2,y:2,item:'opatrunek_p',n:1},
+    {type:'chest',id:'croy_g2',x:23,y:2,gold:120},
+    {type:'exit',x:12,y:17,to:'wioska',tx:22,ty:18,dir:'up'},
+    {type:'exit',x:13,y:17,to:'wioska',tx:22,ty:18,dir:'up'},
+  ]};
+  if(typeof SCRIPTS!=='undefined')Object.assign(SCRIPTS,{
+    croydon_boss:()=>G.flags.croydon_boss_done?[{say:['','Brama bloku stoi otworem. Boss pokonany — bloki ucichły. Na razie.']}]:[
+      {say:['','Z najciemniejszej bramy wychodzi postać w złotym łańcuchu i kominiarce. Za nią — cienie z gnatami.']},
+      {say:['','— Zabłądziłeś, frajerze. To MOJE bloki.']},
+      {choice:[
+        {t:'Rozwal Bossa Bloków',do:[{battle:{group:['gangster_boss','gangster_gun'],bg:'street',music:'boss',boss:true,canFlee:false,
+          onWin:[{flag:'croydon_boss_done'},{gold:600},{give:'rubinowa_korona'},{say:['','Boss pada na asfalt. Bloki należą teraz do tego, kto stoi. Z kieszeni wypada coś świecącego.']}]}}]},
+        {t:'Wycofaj się',do:[{say:['','Cofasz się w cień. Gnaty odprowadzają cię wzrokiem.']}]},
+      ]},
+    ],
+  });
+})();
+/* APPEND_END */
 </script>
 </body>
 </html>
